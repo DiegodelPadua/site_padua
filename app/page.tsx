@@ -27,7 +27,7 @@ export default function Home() {
       {/* HEADER */}
       <header className="header">
         <a href="#" className="logo">
-          PÁDUA
+          PÁDUA.CULTURE
         </a>
 
         <nav className="nav">
@@ -51,11 +51,11 @@ export default function Home() {
       {/* HERO */}
       <section className="hero">
         <div className="heroContent">
-          <p>NEW COLLECTION · 2026</p>
+          <p>NOVA COLEÇÃO · 2026</p>
 
           <h1>PÁDUA</h1>
 
-          <span>Original pieces. New stories.</span>
+          <span>Novas peças. Mesma essência.</span>
 
           <a href="#new-drop" className="buttonLight">
             EXPLORAR COLEÇÃO
@@ -104,11 +104,11 @@ export default function Home() {
           <p>PÁDUA UPCYCLING</p>
 
           <h2>
-            EXISTING
+            RECRIAR,
             <br />
-            PIECES.
+            RESSIGNIFICAR.
             <br />
-            <em>NEW STORIES.</em>
+            <em>VESTIR DE NOVO.</em>
           </h2>
 
           <p className="upcyclingText">

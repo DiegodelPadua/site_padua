@@ -38,15 +38,15 @@ button {
 }
 
 .logo {
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 900;
   letter-spacing: -1px;
 }
 
 .nav {
   display: flex;
-  gap: 35px;
-  font-size: 12px;
+  gap: 45px;
+  font-size: 32px;
   font-weight: 700;
 }
 
@@ -56,13 +56,13 @@ button {
   justify-content: flex-end;
   align-items: center;
   gap: 25px;
-  font-size: 11px;
+  font-size: 15px;
 }
 
 .headerActions button,
 .headerActions a {
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 400;
   letter-spacing: normal;
 }
@@ -408,7 +408,7 @@ button {
   }
 }
 .headerActions a {
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 700;
   transition: opacity 0.2s;
 }
