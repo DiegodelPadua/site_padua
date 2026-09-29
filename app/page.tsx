@@ -31,18 +31,18 @@ export default function Home() {
         </a>
 
         <nav className="nav">
-          <a href="#shop">SHOP</a>
-          <a href="#new-drop">NEW DROP</a>
+          <a href="#shop">LOJA</a>
+          <a href="#new-drop">LANÇAMENTOS</a>
           <a href="#upcycling">UPCYCLING</a>
           <a href="#about">SOBRE</a>
         </nav>
 
         <div className="headerActions">
-          <button>BUSCAR</button>
-
-          <Link href="/login">
+          <Link href="/login" className="accountLink">
             CONTA
           </Link>
+
+          <button>BUSCAR</button>
 
           <button>SACOLA (0)</button>
         </div>

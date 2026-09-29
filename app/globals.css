@@ -51,21 +51,34 @@ button {
 }
 
 .nav a,
-.headerActions button {
-  transition: opacity 0.2s;
-}
-
-.nav a:hover,
-.headerActions button:hover {
-  opacity: 0.45;
-}
-
 .headerActions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 25px;
   font-size: 11px;
+}
+
+.headerActions button,
+.headerActions a {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.headerActions .accountLink {
   font-weight: 700;
+}
+
+.headerActions button,
+.headerActions a {
+  transition: opacity 0.2s;
+}
+
+.headerActions button:hover,
+.headerActions a:hover {
+  opacity: 0.45;
 }
 
 /* HERO */
@@ -74,7 +87,7 @@ button {
   min-height: calc(100vh - 82px);
   background:
     linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.35)),
-    url("/images/hero.jpg") center/cover;
+    url("/site_padua/images/hero.jpg") center/cover;
   display: flex;
   align-items: flex-end;
   padding: 5%;
