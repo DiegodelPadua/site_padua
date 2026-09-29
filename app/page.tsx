@@ -49,7 +49,7 @@ export default function Home() {
       </header>
 
       {/* HERO */}
-      <section className="hero">DD
+      <section className="hero">
         <div className="heroContent">
           <p>NOVA COLEÇÃO · 2026</p>
 
