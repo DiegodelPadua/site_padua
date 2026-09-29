@@ -1,0 +1,300 @@
+.loginPage {
+    min-height: 100vh;
+    background: #f2f0e9;
+    color: #111;
+  }
+  
+  .loginHeader {
+    height: 85px;
+    padding: 0 4%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #c9c6bd;
+  }
+  
+  .loginLogo {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: -1.5px;
+  }
+  
+  .backHome {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  
+  .loginContainer {
+    min-height: calc(100vh - 150px);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  /* LADO ESQUERDO */
+  
+  .loginIntro {
+    padding: 80px 8%;
+    border-right: 1px solid #c9c6bd;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  
+  .loginNumber {
+    font-size: 10px;
+    letter-spacing: 2px;
+    margin-bottom: 45px;
+  }
+  
+  .loginIntro h1 {
+    font-size: clamp(65px, 7vw, 125px);
+    line-height: 0.78;
+    letter-spacing: -6px;
+  }
+  
+  .loginIntro h1 em {
+    font-family: Georgia, serif;
+    font-weight: normal;
+  }
+  
+  .loginIntro p {
+    max-width: 390px;
+    margin-top: 55px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #666;
+  }
+  
+  /* FORMULÁRIO */
+  
+  .formArea {
+    padding: 60px 10%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  
+  .formTabs {
+    display: flex;
+    border-bottom: 1px solid #aaa;
+    margin-bottom: 55px;
+  }
+  
+  .formTabs button {
+    width: 50%;
+    padding: 18px 0;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #777;
+    border-bottom: 2px solid transparent;
+  }
+  
+  .formTabs button.active {
+    color: #111;
+    border-bottom: 2px solid #111;
+  }
+  
+  .accountForm {
+    width: 100%;
+    max-width: 550px;
+    margin: 0 auto;
+  }
+  
+  .formTitle {
+    margin-bottom: 45px;
+  }
+  
+  .formTitle span {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #777;
+  }
+  
+  .formTitle h2 {
+    font-family: Georgia, serif;
+    font-weight: normal;
+    font-size: 32px;
+    margin-top: 8px;
+  }
+  
+  .accountForm > label,
+  .twoColumns label {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 25px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+  }
+  
+  .accountForm input[type="text"],
+  .accountForm input[type="email"],
+  .accountForm input[type="password"],
+  .accountForm input[type="tel"] {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid #aaa;
+    outline: none;
+    padding: 13px 0;
+    font-size: 15px;
+    color: #111;
+    border-radius: 0;
+  }
+  
+  .accountForm input:focus {
+    border-color: #111;
+  }
+  
+  .accountForm input::placeholder {
+    color: #aaa;
+  }
+  
+  .twoColumns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+  }
+  
+  .formOptions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 10px 0 35px;
+  }
+  
+  .remember,
+  .terms {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 9px !important;
+    font-size: 9px !important;
+    letter-spacing: 1px !important;
+  }
+  
+  .remember {
+    margin: 0 !important;
+  }
+  
+  .terms {
+    margin: 15px 0 30px !important;
+    line-height: 1.5;
+  }
+  
+  .remember input,
+  .terms input {
+    accent-color: #111;
+  }
+  
+  .forgotPassword {
+    font-size: 9px;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #111;
+    padding-bottom: 3px;
+  }
+  
+  .mainButton {
+    width: 100%;
+    height: 60px;
+    background: #111;
+    color: #fff;
+    padding: 0 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    transition: background 0.25s, color 0.25s;
+  }
+  
+  .mainButton:hover {
+    background: #d7ff37;
+    color: #111;
+  }
+  
+  .mainButton span {
+    font-size: 20px;
+  }
+  
+  .changeMode {
+    text-align: center;
+    margin-top: 25px;
+    font-size: 11px;
+    color: #777;
+  }
+  
+  .changeMode button {
+    margin-left: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    border-bottom: 1px solid #111;
+  }
+  
+  /* FOOTER */
+  
+  .loginFooter {
+    height: 65px;
+    border-top: 1px solid #c9c6bd;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4%;
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  
+  /* MOBILE */
+  
+  @media (max-width: 850px) {
+    .loginContainer {
+      grid-template-columns: 1fr;
+    }
+  
+    .loginIntro {
+      min-height: 500px;
+      border-right: 0;
+      border-bottom: 1px solid #c9c6bd;
+      padding: 70px 6%;
+    }
+  
+    .loginIntro h1 {
+      letter-spacing: -4px;
+    }
+  
+    .formArea {
+      padding: 60px 6%;
+    }
+  }
+  
+  @media (max-width: 550px) {
+    .loginHeader {
+      height: 70px;
+    }
+  
+    .backHome {
+      font-size: 8px;
+    }
+  
+    .loginIntro {
+      min-height: 420px;
+    }
+  
+    .loginIntro h1 {
+      font-size: 58px;
+      letter-spacing: -3px;
+    }
+  
+    .twoColumns {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+  
+    .formOptions {
+      align-items: flex-start;
+      gap: 20px;
+    }
+  }
