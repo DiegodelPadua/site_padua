@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 
 const products = [
@@ -20,10 +23,236 @@ const products = [
     image: "/images/essential.jpg",
   },
 ];
+const categories = [
+  {
+    name: "CAMISETAS",
+    search: ["camiseta", "camisetas"],
+    href: "/loja/camisetas",
+  },
+  {
+    name: "CALÇAS",
+    search: ["calça", "calças", "calca", "calcas"],
+    href: "/loja/calcas",
+  },
+  {
+    name: "SHORTS",
+    search: ["short", "shorts"],
+    href: "/loja/shorts",
+  },
+  {
+    name: "BONÉS",
+    search: ["boné", "bonés", "bone", "bones"],
+    href: "/loja/bones",
+  },
+  {
+    name: "UPCYCLING",
+    search: ["upcycling"],
+    href: "/loja/upcycling",
+  },
+];
 
 export default function Home() {
+
+
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredProducts = products.filter((product) => {
+    const term = search.toLowerCase();
+
+    return (
+      product.name.toLowerCase().includes(term) ||
+      product.category.toLowerCase().includes(term)
+    );
+  });
+  const normalizedSearch = search
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+
+  const matchedCategory = categories.find((category) =>
+    category.search.some((term) => {
+      const normalizedTerm = term
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+      return normalizedTerm === normalizedSearch;
+    })
+  );
+
+  function openSearch() {
+    setSearchOpen(true);
+    setSearch("");
+  }
+
+  function closeSearch() {
+    setSearchOpen(false);
+    setSearch("");
+  }
+
+  
+
   return (
     <main>
+
+      {/*Código referente ao BUSCAR*/}
+      {searchOpen && (
+        <div className="searchOverlay">
+
+          <div className="searchTop">
+            <span className="searchLogo">PÁDUA</span>
+
+            <button
+              type="button"
+              className="searchClose"
+              onClick={closeSearch}
+              aria-label="Fechar busca"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="searchContainer">
+
+            <span className="searchEyebrow">
+              BUSCA
+            </span>
+
+            <h2>
+              O QUE VOCÊ
+              <br />
+              PROCURA?
+            </h2>
+
+            <div className="searchInputArea">
+
+              <input
+                type="text"
+                placeholder="Digite sua busca..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                autoFocus
+              />
+
+              <span>⌕</span>
+
+            </div>
+
+            {search === "" ? (
+
+              <div className="searchSuggestions">
+                <p>SUGESTÕES</p>
+
+                <div className="searchCategoryList">
+                  {categories.map((category, index) => (
+                   <Link
+                      href={category.href}
+                      key={category.name}
+                      onClick={closeSearch}
+                    >
+                      <span>{category.name}</span>
+
+                      <small>
+                        {String(index + 1).padStart(2, "0")}
+                      </small>
+
+                      <strong>↗</strong>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+
+            ) : (
+
+              <div className="searchResults">
+
+                <div className="searchResultsHeader">
+
+                  <span>
+                    RESULTADOS
+                  </span>
+
+                  <span>
+                    {filteredProducts.length}{" "}
+                    {filteredProducts.length === 1
+                      ? "PRODUTO"
+                      : "PRODUTOS"}
+                  </span>
+
+                </div>
+
+                {filteredProducts.length > 0 ? (
+
+                  <div className="searchProducts">
+
+                    {filteredProducts.map((product) => (
+
+                      <article
+                        className="searchProduct"
+                        key={product.name}
+                      >
+
+                        <div className="searchProductImage">
+
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                          />
+
+                        </div>
+
+                        <div className="searchProductInfo">
+
+                          <div>
+                            <h3>{product.name}</h3>
+                            <p>{product.category}</p>
+                          </div>
+
+                          <strong>
+                            {product.price}
+                          </strong>
+
+                        </div>
+
+                      </article>
+
+                    ))}
+
+                  </div>
+
+                ) : (
+
+                  <div className="noResults">
+
+                    <p>
+                      Nenhum produto encontrado.
+                    </p>
+
+                    <span>
+                      Tente buscar outro termo.
+                    </span>
+
+                  </div>
+
+                )}
+
+              </div>
+
+            )}
+
+          </div>
+
+        </div>
+      )}
+
+
+
+
+
+      
       {/* HEADER */}
       <header className="header">
         <a href="#" className="logo">
@@ -37,12 +266,16 @@ export default function Home() {
           <a href="#about">SOBRE</a>
         </nav>
 
+
+        {/*botões do lado direito superior*/}
         <div className="headerActions">
           <Link href="/login" className="accountLink">
             CONTA
           </Link>
 
-          <button>BUSCAR</button>
+           <button type="button" onClick={openSearch}>
+              BUSCAR
+           </button>
 
           <button>SACOLA (0)</button>
         </div>
@@ -127,35 +360,37 @@ export default function Home() {
         <h2>Explore</h2>
 
         <div className="categoryList">
-          <a href="#">
+
+          <Link href="/loja/camisetas">
             <span>CAMISETAS</span>
             <small>01</small>
             <strong>↗</strong>
-          </a>
+          </Link>
 
-          <a href="#">
+          <Link href="/loja/calcas">
             <span>CALÇAS</span>
             <small>02</small>
             <strong>↗</strong>
-          </a>
+          </Link>
 
-          <a href="#">
+          <Link href="/loja/shorts">
             <span>SHORTS</span>
             <small>03</small>
             <strong>↗</strong>
-          </a>
+          </Link>
 
-          <a href="#">
+          <Link href="/loja/bones">
             <span>BONÉS</span>
             <small>04</small>
             <strong>↗</strong>
-          </a>
+          </Link>
 
-          <a href="#">
+          <Link href="/loja/upcycling">
             <span>UPCYCLING</span>
             <small>05</small>
             <strong>↗</strong>
-          </a>
+          </Link>
+
         </div>
       </section>
 

@@ -97,7 +97,7 @@ button {
 .heroContent p {
   font-size: 11px;
   letter-spacing: 3px;
-  margin-bottom: 15px;
+  margin-bottom: 60px;
 }
 
 .heroContent h1 {
@@ -347,66 +347,6 @@ button {
   gap: 30px;
 }
 
-/* MOBILE */
-
-@media (max-width: 800px) {
-  .header {
-    display: flex;
-    justify-content: space-between;
-  }
-
-  .nav {
-    display: none;
-  }
-
-  .headerActions button:first-child {
-    display: none;
-  }
-
-  .hero {
-    min-height: 80vh;
-  }
-
-  .heroContent h1 {
-    letter-spacing: -4px;
-  }
-
-  .products {
-    grid-template-columns: 1fr;
-    gap: 50px;
-  }
-
-  .productImage {
-    height: 500px;
-  }
-
-  .upcycling {
-    grid-template-columns: 1fr;
-    min-height: 700px;
-  }
-
-  .upcyclingNumber {
-    margin-bottom: 50px;
-  }
-
-  .upcycling h2,
-  .about h2 {
-    letter-spacing: -3px;
-  }
-
-  .categoryList a {
-    grid-template-columns: 1fr 30px;
-  }
-
-  .categoryList small {
-    display: none;
-  }
-
-  .footerBottom {
-    gap: 30px;
-    flex-wrap: wrap;
-  }
-}
 .headerActions a {
   font-size: 15px;
   font-weight: 700;
@@ -416,3 +356,1217 @@ button {
 .headerActions a:hover {
   opacity: 0.45;
 }
+/* =========================================================
+   BUSCA
+   ========================================================= */
+
+.searchOverlay {
+  position: fixed;
+  inset: 0;
+
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+
+  background: #f2f0e9;
+  color: #111;
+
+  z-index: 9999;
+
+  overflow-y: auto;
+
+  animation: searchOpen 0.35s ease;
+}
+
+@keyframes searchOpen {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* CABEÇALHO DA BUSCA */
+
+.searchTop {
+  height: 82px;
+
+  padding: 0 4%;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  border-bottom: 1px solid #c9c6bd;
+}
+
+.searchLogo {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -1px;
+}
+
+.searchClose {
+  width: 45px;
+  height: 45px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 34px;
+  font-weight: 300;
+
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease;
+}
+
+.searchClose:hover {
+  transform: rotate(90deg);
+  opacity: 0.5;
+}
+
+
+/* CONTEÚDO */
+
+.searchContainer {
+  padding: 75px 4% 100px;
+}
+
+.searchEyebrow {
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.searchContainer > h2 {
+  margin-top: 25px;
+
+  font-size: clamp(60px, 8vw, 120px);
+  line-height: 0.85;
+
+  letter-spacing: -6px;
+}
+
+
+/* CAMPO */
+
+.searchInputArea {
+  margin-top: 65px;
+
+  display: flex;
+  align-items: center;
+
+  border-bottom: 2px solid #111;
+}
+
+.searchInputArea input {
+  flex: 1;
+
+  min-width: 0;
+
+  padding: 20px 0;
+
+  background: transparent;
+
+  border: 0;
+  outline: none;
+
+  color: #111;
+
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: clamp(24px, 3vw, 42px);
+}
+
+.searchInputArea input::placeholder {
+  color: #aaa;
+}
+
+.searchInputArea span {
+  font-size: 32px;
+}
+
+
+/* SUGESTÕES */
+
+.searchSuggestions {
+  margin-top: 45px;
+}
+
+.searchSuggestions p {
+  margin-bottom: 20px;
+
+  font-size: 9px;
+  letter-spacing: 2px;
+
+  color: #777;
+}
+
+.searchCategoryList {
+  margin-top: 20px;
+
+  border-top: 1px solid #bbb;
+}
+
+.searchCategoryList button {
+  width: 100%;
+
+  display: grid;
+  grid-template-columns: 1fr 80px 40px;
+  align-items: center;
+
+  padding: 20px 5px;
+
+  border-bottom: 1px solid #bbb;
+
+  text-align: left;
+
+  transition:
+    padding 0.25s ease,
+    background 0.25s ease;
+}
+
+.searchCategoryList button:hover {
+  padding-left: 18px;
+}
+
+.searchCategoryList span {
+  font-size: clamp(28px, 4vw, 55px);
+
+  letter-spacing: -2px;
+}
+
+.searchCategoryList small {
+  font-size: 9px;
+}
+
+.searchCategoryList strong {
+  font-size: 20px;
+}
+
+
+/* CATEGORIA ENCONTRADA PELA BUSCA */
+
+.categorySearchResult {
+  width: 100%;
+
+  margin-top: 30px;
+  padding: 25px 5px;
+
+  border-top: 1px solid #aaa;
+  border-bottom: 1px solid #aaa;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  text-align: left;
+
+  transition: padding 0.25s ease;
+}
+
+.categorySearchResult:hover {
+  padding-left: 15px;
+}
+
+.categorySearchResult span {
+  font-size: 8px;
+
+  letter-spacing: 2px;
+
+  color: #777;
+}
+
+.categorySearchResult h3 {
+  margin-top: 8px;
+
+  font-size: clamp(30px, 4vw, 55px);
+
+  letter-spacing: -2px;
+}
+
+.categorySearchResult strong {
+  font-size: 25px;
+}
+
+
+/* RESULTADOS */
+
+.searchResults {
+  margin-top: 60px;
+}
+
+.searchResultsHeader {
+  padding-bottom: 15px;
+
+  border-bottom: 1px solid #aaa;
+
+  display: flex;
+  justify-content: space-between;
+
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+
+/* GRID DOS PRODUTOS */
+
+.searchProducts {
+  margin-top: 30px;
+
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+
+  gap: 20px;
+}
+
+.searchProduct {
+  min-width: 0;
+}
+
+.searchProductImage {
+  width: 100%;
+
+  aspect-ratio: 4 / 5;
+
+  overflow: hidden;
+
+  background: #dedbd2;
+}
+
+.searchProductImage img {
+  width: 100%;
+  height: 100%;
+
+  object-fit: contain;
+  object-position: center;
+
+  display: block;
+
+  transition: transform 0.5s ease;
+}
+
+.searchProduct:hover img {
+  transform: scale(1.03);
+}
+
+.searchProductInfo {
+  padding-top: 14px;
+
+  display: flex;
+  justify-content: space-between;
+
+  gap: 20px;
+}
+
+.searchProductInfo h3 {
+  font-size: 13px;
+
+  text-transform: uppercase;
+}
+
+.searchProductInfo p {
+  margin-top: 5px;
+
+  font-size: 10px;
+
+  color: #777;
+}
+
+.searchProductInfo strong {
+  font-size: 12px;
+
+  white-space: nowrap;
+}
+
+
+/* SEM RESULTADOS */
+
+.noResults {
+  padding: 70px 0;
+
+  border-bottom: 1px solid #aaa;
+}
+
+.noResults p {
+  font-family: Georgia, serif;
+
+  font-size: 30px;
+}
+
+.noResults span {
+  display: block;
+
+  margin-top: 10px;
+
+  font-size: 11px;
+
+  color: #777;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   BUSCA     MOBILE
+   ========================================================= */
+
+@media (max-width: 1024px) {
+
+  .searchTop {
+    height: 68px;
+
+    padding: 0 18px;
+  }
+
+  .searchLogo {
+    font-size: 18px;
+  }
+
+  .searchClose {
+    width: 35px;
+    height: 35px;
+
+    font-size: 30px;
+  }
+
+  .searchContainer {
+    padding:
+      55px 18px
+      80px;
+  }
+
+  .searchEyebrow {
+    font-size: 8px;
+  }
+
+  .searchContainer > h2 {
+    margin-top: 20px;
+
+    font-size: clamp(
+      48px,
+      15vw,
+      72px
+    );
+
+    line-height: 0.9;
+
+    letter-spacing: -4px;
+  }
+
+  .searchInputArea {
+    margin-top: 45px;
+  }
+
+  .searchInputArea input {
+    padding: 15px 0;
+
+    font-size: 22px;
+  }
+
+  .searchInputArea span {
+    font-size: 25px;
+  }
+
+  .searchSuggestions {
+    margin-top: 30px;
+  }
+
+  .searchSuggestions button {
+    padding: 10px 14px;
+
+    font-size: 9px;
+  }
+
+  .searchResults {
+    margin-top: 45px;
+  }
+
+  .searchProducts {
+    grid-template-columns:
+      repeat(2, 1fr);
+
+    gap: 12px;
+  }
+
+  .searchProductInfo {
+    display: block;
+  }
+
+  .searchProductInfo strong {
+    display: block;
+
+    margin-top: 8px;
+  }
+  .searchCategoryList button {
+  grid-template-columns: 1fr 35px;
+
+  padding: 18px 2px;
+}
+
+.searchCategoryList button small {
+  display: none;
+}
+
+.searchCategoryList span {
+  font-size: clamp(28px, 10vw, 45px);
+}
+
+.searchCategoryList strong {
+  font-size: 18px;
+}
+}
+
+/* CELULARES PEQUENOS */
+
+@media (max-width: 420px) {
+
+  .searchTop {
+    padding: 0 14px;
+  }
+
+  .searchContainer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .searchContainer > h2 {
+    font-size: 14vw;
+
+    letter-spacing: -3px;
+  }
+
+  .searchProducts {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================
+   MOBILE TODO O SITE
+   ========================= */
+
+@media (max-width: 1024px) {
+
+  /* HEADER */
+
+  .header {
+    height: 68px;
+    padding: 0 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .logo {
+    font-size: 18px;
+    letter-spacing: -0.8px;
+    flex-shrink: 0;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .headerActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 15px;
+  }
+
+  .headerActions button,
+  .headerActions a {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .headerActions .accountLink {
+    font-weight: 700;
+  }
+
+
+  /* HERO */
+
+  .hero {
+    min-height: calc(100svh - 68px);
+
+    background:
+      linear-gradient(
+        rgba(0, 0, 0, 0.10),
+        rgba(0, 0, 0, 0.45)
+      ),
+      url("/site_padua/images/hero.jpg");
+
+    background-size: cover;
+
+    /* controla qual parte da foto aparece no celular */
+    background-position: 65% center;
+
+    background-repeat: no-repeat;
+
+    padding: 30px 18px 45px;
+
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .heroContent {
+    width: 100%;
+  }
+
+  .heroContent p {
+    font-size: 9px;
+    letter-spacing: 2px;
+    margin-bottom: 25px;
+  }
+
+  .heroContent h1 {
+    font-size: clamp(64px, 25vw, 110px);
+    line-height: 0.82;
+
+    /* evita o nome PÁDUA sair da tela */
+    letter-spacing: -5px;
+
+    max-width: 100%;
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+
+  .heroContent span {
+    font-size: 13px;
+    margin: 22px 0;
+  }
+
+  .buttonLight {
+    font-size: 10px;
+  }
+
+
+  /* LANÇAMENTOS */
+
+  .section {
+    padding: 75px 18px;
+  }
+
+  .sectionHeader {
+    margin-bottom: 35px;
+    align-items: flex-end;
+  }
+
+  .sectionHeader h2,
+  .categories h2 {
+    font-size: 54px;
+    line-height: 0.9;
+    letter-spacing: -3px;
+  }
+
+  .sectionHeader > a {
+    font-size: 9px;
+  }
+
+  .eyebrow {
+    font-size: 8px;
+    letter-spacing: 1.5px;
+  }
+
+
+  /* PRODUTOS */
+
+  .products {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 55px;
+  }
+
+  .productCard {
+    width: 100%;
+  }
+
+  .productImage {
+    width: 100%;
+
+    /* melhor que altura fixa */
+    height: auto;
+    aspect-ratio: 4 / 5;
+
+    background: #dedbd2;
+    overflow: hidden;
+  }
+
+  .productImage img {
+    width: 100%;
+    height: 100%;
+
+    /*
+      contain mostra a roupa inteira.
+      Se suas fotos já tiverem bastante fundo,
+      pode trocar para cover.
+    */
+    object-fit: contain;
+
+    object-position: center;
+  }
+
+  .productInfo {
+    padding-top: 12px;
+    gap: 15px;
+  }
+
+  .productInfo h3 {
+    font-size: 12px;
+  }
+
+  .productInfo p {
+    font-size: 10px;
+  }
+
+  .productInfo strong {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .quickAdd {
+    width: 42px;
+    height: 42px;
+    right: 12px;
+    bottom: 12px;
+  }
+
+
+  /* UPCYCLING */
+
+  .upcycling {
+    min-height: auto;
+    padding: 80px 18px;
+
+    display: block;
+  }
+
+  .upcyclingNumber {
+    margin-bottom: 60px;
+    font-size: 9px;
+  }
+
+  .upcyclingContent > p:first-child {
+    font-size: 9px;
+    letter-spacing: 2px;
+    margin-bottom: 35px;
+  }
+
+  .upcycling h2 {
+  font-size: clamp(38px, 11vw, 58px);
+  line-height: 0.92;
+  letter-spacing: -3px;
+
+  width: 100%;
+  max-width: 100%;
+
+  word-break: normal;
+  overflow-wrap: normal;
+
+    /* impede texto grande de estourar */
+    overflow-wrap: break-word;
+  }
+
+  .upcyclingText {
+    max-width: 100%;
+    margin: 45px 0 35px;
+    font-size: 13px;
+  }
+
+
+  /* CATEGORIAS */
+
+  .categories {
+    padding: 80px 18px;
+  }
+
+  .categoryList {
+    margin-top: 45px;
+  }
+
+  .categoryList a {
+    grid-template-columns: 1fr auto;
+    padding: 20px 2px;
+  }
+
+  .categoryList a:hover {
+    padding-left: 5px;
+  }
+
+  .categoryList span {
+    font-size: clamp(32px, 11vw, 52px);
+    letter-spacing: -2px;
+  }
+
+  .categoryList small {
+    display: none;
+  }
+
+  .categoryList strong {
+    font-size: 20px;
+  }
+
+
+  /* SOBRE */
+
+  .about {
+    padding: 85px 18px;
+  }
+
+  .about p {
+    font-size: 8px;
+    margin-bottom: 55px;
+  }
+
+  .about h2 {
+    font-size: clamp(44px, 14vw, 70px);
+    line-height: 0.95;
+    letter-spacing: -3px;
+    overflow-wrap: break-word;
+  }
+
+
+  /* FOOTER */
+
+  .footer {
+    padding: 65px 18px 25px;
+    overflow: hidden;
+  }
+
+  .footerLogo {
+    /*
+      23vw no desktop funciona,
+      mas no celular precisamos controlar melhor.
+    */
+    font-size: clamp(72px, 27vw, 130px);
+    letter-spacing: -6px;
+    line-height: 0.8;
+    white-space: nowrap;
+  }
+
+  .footerBottom {
+    margin-top: 45px;
+    padding-top: 20px;
+
+    display: grid;
+    grid-template-columns: 1fr auto;
+
+    gap: 20px;
+    font-size: 8px;
+  }
+
+  .footerBottom div {
+    gap: 15px;
+  }
+}
+
+
+/* CELULARES PEQUENOS */
+
+@media (max-width: 420px) {
+
+  .headerActions {
+    gap: 11px;
+  }
+
+  .headerActions button,
+  .headerActions a {
+    font-size: 9px;
+  }
+
+  .heroContent h1 {
+    font-size: 22vw;
+    letter-spacing: -4px;
+  }
+
+  .sectionHeader h2 {
+    font-size: 46px;
+  }
+
+  .upcycling h2 {
+    font-size: 15vw;
+  }
+
+  .about h2 {
+    font-size: 13vw;
+  }
+
+  .footerLogo {
+    font-size: 26vw;
+    letter-spacing: -5px;
+  }
+}
+
+/* =========================================================
+   BUSCA - AJUSTE MOBILE DEFINITIVO
+   ========================================================= */
+
+@media (max-width: 1024px) {
+
+  /* TELA COMPLETA */
+
+  .searchOverlay {
+    width: 100%;
+    height: 100dvh;
+
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    background: #f2f0e9;
+  }
+
+
+  /* CABEÇALHO */
+
+  .searchTop {
+    height: 68px;
+
+    padding: 0 16px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .searchLogo {
+    font-size: 19px;
+    font-weight: 900;
+    letter-spacing: -1px;
+  }
+
+  .searchClose {
+    width: 35px;
+    height: 35px;
+
+    font-size: 28px;
+  }
+
+
+  /* CONTEÚDO */
+
+  .searchContainer {
+    width: 100%;
+
+    padding: 60px 14px 70px;
+
+    overflow: hidden;
+  }
+
+  .searchEyebrow {
+    display: block;
+
+    font-size: 8px;
+    letter-spacing: 3px;
+
+    margin-bottom: 20px;
+  }
+
+
+  /* TÍTULO */
+
+  .searchContainer > h2 {
+    width: 100%;
+
+    margin: 0;
+
+    font-size: clamp(48px, 14vw, 68px);
+
+    line-height: 0.88;
+
+    letter-spacing: -4px;
+
+    overflow-wrap: normal;
+  }
+
+
+  /* CAMPO DE BUSCA */
+
+  .searchInputArea {
+    width: 100%;
+
+    margin-top: 60px;
+
+    display: flex;
+    align-items: center;
+
+    border-bottom: 2px solid #111;
+  }
+
+  .searchInputArea input {
+    width: 100%;
+    min-width: 0;
+
+    padding: 14px 0;
+
+    font-size: 20px;
+
+    background: transparent;
+
+    border: none;
+    outline: none;
+  }
+
+  .searchInputArea span {
+    flex-shrink: 0;
+
+    margin-left: 10px;
+
+    font-size: 22px;
+  }
+
+
+  /* SUGESTÕES */
+
+  .searchSuggestions {
+    width: 100%;
+
+    margin-top: 30px;
+  }
+
+  .searchSuggestions > p {
+    margin-bottom: 18px;
+
+    font-size: 8px;
+    letter-spacing: 2px;
+  }
+
+
+  /* LISTA DAS CATEGORIAS */
+
+  .searchCategoryList {
+    width: 100%;
+
+    display: block;
+
+    border-top: 1px solid #bbb;
+  }
+
+  .searchCategoryList a,
+  .searchCategoryList button {
+    width: 100%;
+
+    display: grid;
+
+    grid-template-columns:
+      minmax(0, 1fr)
+      30px;
+
+    align-items: center;
+
+    gap: 10px;
+
+    padding: 18px 2px;
+
+    border: none;
+    border-bottom: 1px solid #bbb;
+
+    text-align: left;
+
+    background: transparent;
+  }
+
+
+  /* NOME DA CATEGORIA */
+
+  .searchCategoryList span {
+    display: block;
+
+    min-width: 0;
+
+    font-size: clamp(30px, 10vw, 43px);
+
+    line-height: 1;
+
+    letter-spacing: -2px;
+
+    white-space: normal;
+
+    overflow-wrap: break-word;
+  }
+
+
+  /* ESCONDE NÚMERO NO CELULAR */
+
+  .searchCategoryList small {
+    display: none;
+  }
+
+
+  /* SETA */
+
+  .searchCategoryList strong {
+    display: block;
+
+    justify-self: end;
+
+    font-size: 18px;
+  }
+
+
+  /* RESULTADOS */
+
+  .searchResults {
+    width: 100%;
+
+    margin-top: 40px;
+  }
+
+  .searchResultsHeader {
+    width: 100%;
+
+    padding-bottom: 12px;
+
+    display: flex;
+    justify-content: space-between;
+
+    font-size: 8px;
+  }
+
+
+  /* PRODUTOS ENCONTRADOS */
+
+  .searchProducts {
+    width: 100%;
+
+    margin-top: 20px;
+
+    display: grid;
+
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+
+    gap: 12px;
+  }
+
+  .searchProduct {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .searchProductImage {
+    width: 100%;
+
+    aspect-ratio: 4 / 5;
+  }
+
+  .searchProductImage img {
+    width: 100%;
+    height: 100%;
+
+    object-fit: contain;
+  }
+
+  .searchProductInfo {
+    display: block;
+
+    padding-top: 10px;
+  }
+
+  .searchProductInfo h3 {
+    font-size: 11px;
+  }
+
+  .searchProductInfo p {
+    font-size: 9px;
+  }
+
+  .searchProductInfo strong {
+    display: block;
+
+    margin-top: 6px;
+
+    font-size: 10px;
+  }
+
+
+  /* CATEGORIA DIGITADA */
+
+  .categorySearchResult {
+    width: 100%;
+
+    margin-top: 20px;
+
+    padding: 18px 2px;
+  }
+
+  .categorySearchResult h3 {
+    font-size: 34px;
+
+    letter-spacing: -2px;
+  }
+}
+
+
+/* =========================================================
+   CELULARES MENORES
+   ========================================================= */
+
+@media (max-width: 420px) {
+
+  .searchTop {
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+
+  .searchContainer {
+    padding:
+      58px
+      13px
+      60px;
+  }
+
+  .searchContainer > h2 {
+    font-size: 13.5vw;
+
+    line-height: 0.88;
+
+    letter-spacing: -3px;
+  }
+
+  .searchInputArea {
+    margin-top: 55px;
+  }
+
+  .searchInputArea input {
+    font-size: 19px;
+  }
+
+  .searchCategoryList span {
+    font-size: 9.5vw;
+
+    letter-spacing: -2px;
+  }
+
+  .searchProducts {
+    grid-template-columns: 1fr;
+  }
+}
+
+
