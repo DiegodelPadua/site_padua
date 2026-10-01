@@ -1,7 +1,27 @@
 "use client";
 
-import { useState } from "react";
+
+/* =========================================================
+   IMPORTAÇÕES
+   =========================================================
+   Link é utilizado para navegar entre as páginas do site
+   sem precisar recarregar toda a aplicação.
+   ========================================================= */
+
 import Link from "next/link";
+
+
+/* =========================================================
+   PRODUTOS
+   =========================================================
+   Produtos exibidos atualmente na seção "NEW DROP".
+
+   ATENÇÃO:
+   Estes dados são temporários.
+
+   Futuramente eles serão substituídos pelos produtos
+   cadastrados no banco de dados.
+   ========================================================= */
 
 const products = [
   {
@@ -23,405 +43,595 @@ const products = [
     image: "/images/essential.jpg",
   },
 ];
-const categories = [
-  {
-    name: "CAMISETAS",
-    search: ["camiseta", "camisetas"],
-    href: "/loja/camisetas",
-  },
-  {
-    name: "CALÇAS",
-    search: ["calça", "calças", "calca", "calcas"],
-    href: "/loja/calcas",
-  },
-  {
-    name: "SHORTS",
-    search: ["short", "shorts"],
-    href: "/loja/shorts",
-  },
-  {
-    name: "BONÉS",
-    search: ["boné", "bonés", "bone", "bones"],
-    href: "/loja/bones",
-  },
-  {
-    name: "UPCYCLING",
-    search: ["upcycling"],
-    href: "/loja/upcycling",
-  },
-];
+
+
+/* =========================================================
+   FUNÇÃO PRINCIPAL - HOME
+   =========================================================
+   Esta função representa a página inicial do site Pádua.
+   ========================================================= */
 
 export default function Home() {
 
-
-
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [search, setSearch] = useState("");
-
-  const filteredProducts = products.filter((product) => {
-    const term = search.toLowerCase();
-
-    return (
-      product.name.toLowerCase().includes(term) ||
-      product.category.toLowerCase().includes(term)
-    );
-  });
-  const normalizedSearch = search
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
-
-  const matchedCategory = categories.find((category) =>
-    category.search.some((term) => {
-      const normalizedTerm = term
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
-
-      return normalizedTerm === normalizedSearch;
-    })
-  );
-
-  function openSearch() {
-    setSearchOpen(true);
-    setSearch("");
-  }
-
-  function closeSearch() {
-    setSearchOpen(false);
-    setSearch("");
-  }
-
-  
-
   return (
+
     <main>
 
-      {/*Código referente ao BUSCAR*/}
-      {searchOpen && (
-        <div className="searchOverlay">
 
-          <div className="searchTop">
-            <span className="searchLogo">PÁDUA</span>
+      {/* =====================================================
+          HEADER / CABEÇALHO
+          =====================================================
+          Parte superior do site.
 
-            <button
-              type="button"
-              className="searchClose"
-              onClick={closeSearch}
-              aria-label="Fechar busca"
-            >
-              ×
-            </button>
-          </div>
+          Contém:
+          - Logo
+          - Menu principal
+          - Conta
+          - Buscar
+          - Sacola
+          ===================================================== */}
 
-          <div className="searchContainer">
-
-            <span className="searchEyebrow">
-              BUSCA
-            </span>
-
-            <h2>
-              O QUE VOCÊ
-              <br />
-              PROCURA?
-            </h2>
-
-            <div className="searchInputArea">
-
-              <input
-                type="text"
-                placeholder="Digite sua busca..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                autoFocus
-              />
-
-              <span>⌕</span>
-
-            </div>
-
-            {search === "" ? (
-
-              <div className="searchSuggestions">
-                <p>SUGESTÕES</p>
-
-                <div className="searchCategoryList">
-                  {categories.map((category, index) => (
-                   <Link
-                      href={category.href}
-                      key={category.name}
-                      onClick={closeSearch}
-                    >
-                      <span>{category.name}</span>
-
-                      <small>
-                        {String(index + 1).padStart(2, "0")}
-                      </small>
-
-                      <strong>↗</strong>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-
-            ) : (
-
-              <div className="searchResults">
-
-                <div className="searchResultsHeader">
-
-                  <span>
-                    RESULTADOS
-                  </span>
-
-                  <span>
-                    {filteredProducts.length}{" "}
-                    {filteredProducts.length === 1
-                      ? "PRODUTO"
-                      : "PRODUTOS"}
-                  </span>
-
-                </div>
-
-                {filteredProducts.length > 0 ? (
-
-                  <div className="searchProducts">
-
-                    {filteredProducts.map((product) => (
-
-                      <article
-                        className="searchProduct"
-                        key={product.name}
-                      >
-
-                        <div className="searchProductImage">
-
-                          <img
-                            src={product.image}
-                            alt={product.name}
-                          />
-
-                        </div>
-
-                        <div className="searchProductInfo">
-
-                          <div>
-                            <h3>{product.name}</h3>
-                            <p>{product.category}</p>
-                          </div>
-
-                          <strong>
-                            {product.price}
-                          </strong>
-
-                        </div>
-
-                      </article>
-
-                    ))}
-
-                  </div>
-
-                ) : (
-
-                  <div className="noResults">
-
-                    <p>
-                      Nenhum produto encontrado.
-                    </p>
-
-                    <span>
-                      Tente buscar outro termo.
-                    </span>
-
-                  </div>
-
-                )}
-
-              </div>
-
-            )}
-
-          </div>
-
-        </div>
-      )}
-
-
-
-
-
-      
-      {/* HEADER */}
       <header className="header">
+
+
+        {/* LOGO */}
+
         <a href="#" className="logo">
           PÁDUA.CULTURE
         </a>
 
+
+        {/* MENU PRINCIPAL */}
+
         <nav className="nav">
-          <a href="#shop">LOJA</a>
-          <a href="#new-drop">LANÇAMENTOS</a>
-          <a href="#upcycling">UPCYCLING</a>
-          <a href="#about">SOBRE</a>
+
+          <a href="#shop">
+            LOJA
+          </a>
+
+          <a href="#new-drop">
+            LANÇAMENTOS
+          </a>
+
+          <a href="#upcycling">
+            UPCYCLING
+          </a>
+
+          <a href="#about">
+            SOBRE
+          </a>
+
         </nav>
 
 
-        {/*botões do lado direito superior*/}
+        {/* ===================================================
+            AÇÕES DO LADO DIREITO DO HEADER
+            =================================================== */}
+
         <div className="headerActions">
-          <Link href="/login" className="accountLink">
+
+
+          {/* CONTA / LOGIN */}
+
+          <Link
+            href="/login"
+            className="accountLink"
+          >
             CONTA
           </Link>
 
-           <button type="button" onClick={openSearch}>
-              BUSCAR
-           </button>
 
-          <button>SACOLA (0)</button>
+          {/* BUSCAR */}
+
+          <Link href="/buscar">
+            BUSCAR
+          </Link>
+
+
+          {/* SACOLA */}
+
+          <button>
+            SACOLA (0)
+          </button>
+
+
         </div>
+
       </header>
 
-      {/* HERO */}
+
+
+      {/* =====================================================
+          HERO
+          =====================================================
+          Primeira área visual do site.
+
+          Contém:
+          - Nome da coleção
+          - Nome Pádua
+          - Frase principal
+          - Botão para explorar a coleção
+          ===================================================== */}
+
       <section className="hero">
+
         <div className="heroContent">
-          <p>NOVA COLEÇÃO · 2026</p>
 
-          <h1>PÁDUA</h1>
 
-          <span>Novas peças. Mesma essência.</span>
+          {/* NOME DA COLEÇÃO */}
 
-          <a href="#new-drop" className="buttonLight">
-            EXPLORAR COLEÇÃO
-          </a>
-        </div>
-      </section>
-
-      {/* NEW DROP */}
-      <section className="section" id="new-drop">
-        <div className="sectionHeader">
-          <div>
-            <span className="eyebrow">01 / NEW DROP</span>
-            <h2>Novidades</h2>
-          </div>
-
-          <a href="#shop">VER TUDO →</a>
-        </div>
-
-        <div className="products">
-          {products.map((product) => (
-            <article className="productCard" key={product.name}>
-              <div className="productImage">
-                <img src={product.image} alt={product.name} />
-
-                <button className="quickAdd">+</button>
-              </div>
-
-              <div className="productInfo">
-                <div>
-                  <h3>{product.name}</h3>
-                  <p>{product.category}</p>
-                </div>
-
-                <strong>{product.price}</strong>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* UPCYCLING */}
-      <section className="upcycling" id="upcycling">
-        <div className="upcyclingNumber">02</div>
-
-        <div className="upcyclingContent">
-          <p>PÁDUA UPCYCLING</p>
-
-          <h2>
-            RECRIAR,
-            <br />
-            RESSIGNIFICAR.
-            <br />
-            <em>VESTIR DE NOVO.</em>
-          </h2>
-
-          <p className="upcyclingText">
-            Peças existentes transformadas em algo novo. Cada criação carrega
-            sua própria história e identidade.
+          <p>
+            NOVA COLEÇÃO · 2026
           </p>
 
-          <a href="#">EXPLORAR UPCYCLING →</a>
+
+          {/* NOME PRINCIPAL */}
+
+          <h1>
+            PÁDUA
+          </h1>
+
+
+          {/* FRASE DA COLEÇÃO */}
+
+          <span>
+            Novas peças. Mesma essência.
+          </span>
+
+
+          {/* BOTÃO EXPLORAR */}
+
+          <a
+            href="#new-drop"
+            className="buttonLight"
+          >
+            EXPLORAR COLEÇÃO
+          </a>
+
+
         </div>
+
       </section>
 
-      {/* CATEGORIES */}
-      <section className="categories" id="shop">
-        <span className="eyebrow">03 / SHOP</span>
 
-        <h2>Explore</h2>
+
+      {/* =====================================================
+          NEW DROP / NOVIDADES
+          =====================================================
+          Exibe os produtos que fazem parte dos lançamentos.
+          ===================================================== */}
+
+      <section
+        className="section"
+        id="new-drop"
+      >
+
+
+        {/* CABEÇALHO DA SEÇÃO */}
+
+        <div className="sectionHeader">
+
+          <div>
+
+            <span className="eyebrow">
+              01 / NEW DROP
+            </span>
+
+            <h2>
+              Novidades
+            </h2>
+
+          </div>
+
+
+          {/* LINK PARA VER TODOS OS PRODUTOS */}
+
+          <a href="#shop">
+            VER TUDO →
+          </a>
+
+        </div>
+
+
+
+        {/* ===================================================
+            LISTA DE PRODUTOS
+            ===================================================
+            O .map() percorre o array "products" e cria
+            automaticamente um card para cada produto.
+            =================================================== */}
+
+        <div className="products">
+
+          {products.map((product) => (
+
+            <article
+              className="productCard"
+              key={product.name}
+            >
+
+
+              {/* =============================================
+                  IMAGEM DO PRODUTO
+                  ============================================= */}
+
+              <div className="productImage">
+
+                <img
+                  src={product.image}
+                  alt={product.name}
+                />
+
+
+                {/* BOTÃO DE ADIÇÃO RÁPIDA */}
+
+                <button className="quickAdd">
+                  +
+                </button>
+
+              </div>
+
+
+
+              {/* =============================================
+                  INFORMAÇÕES DO PRODUTO
+                  ============================================= */}
+
+              <div className="productInfo">
+
+                <div>
+
+                  {/* NOME */}
+
+                  <h3>
+                    {product.name}
+                  </h3>
+
+
+                  {/* CATEGORIA */}
+
+                  <p>
+                    {product.category}
+                  </p>
+
+                </div>
+
+
+                {/* PREÇO */}
+
+                <strong>
+                  {product.price}
+                </strong>
+
+              </div>
+
+            </article>
+
+          ))}
+
+        </div>
+
+      </section>
+
+
+
+      {/* =====================================================
+          UPCYCLING
+          =====================================================
+          Área destinada à apresentação do conceito de
+          Upcycling da Pádua.
+          ===================================================== */}
+
+      <section
+        className="upcycling"
+        id="upcycling"
+      >
+
+
+        {/* NÚMERO DA SEÇÃO */}
+
+        <div className="upcyclingNumber">
+          02
+        </div>
+
+
+
+        {/* CONTEÚDO DA SEÇÃO */}
+
+        <div className="upcyclingContent">
+
+
+          {/* TÍTULO PEQUENO */}
+
+          <p>
+            PÁDUA UPCYCLING
+          </p>
+
+
+          {/* TÍTULO PRINCIPAL */}
+
+          <h2>
+
+            RECRIAR,
+            <br />
+
+            RESSIGNIFICAR.
+            <br />
+
+            <em>
+              VESTIR DE NOVO.
+            </em>
+
+          </h2>
+
+
+          {/* TEXTO EXPLICATIVO */}
+
+          <p className="upcyclingText">
+
+            Peças existentes transformadas em algo novo.
+            Cada criação carrega sua própria história e identidade.
+
+          </p>
+
+
+          {/* LINK UPCYCLING */}
+
+          <a href="#">
+            EXPLORAR UPCYCLING →
+          </a>
+
+
+        </div>
+
+      </section>
+
+
+
+      {/* =====================================================
+          SHOP / CATEGORIAS
+          =====================================================
+          Área "Explore" da loja.
+
+          Aqui o usuário escolhe qual categoria deseja acessar.
+          ===================================================== */}
+
+      <section
+        className="categories"
+        id="shop"
+      >
+
+
+        {/* IDENTIFICAÇÃO DA SEÇÃO */}
+
+        <span className="eyebrow">
+          03 / SHOP
+        </span>
+
+
+        {/* TÍTULO */}
+
+        <h2>
+          Explore
+        </h2>
+
+
+
+        {/* ===================================================
+            LISTA DE CATEGORIAS
+            =================================================== */}
 
         <div className="categoryList">
 
+
+          {/* CAMISETAS */}
+
           <Link href="/loja/camisetas">
-            <span>CAMISETAS</span>
-            <small>01</small>
-            <strong>↗</strong>
+
+            <span>
+              CAMISETAS
+            </span>
+
+            <small>
+              01
+            </small>
+
+            <strong>
+              ↗
+            </strong>
+
           </Link>
+
+
+
+          {/* CALÇAS */}
 
           <Link href="/loja/calcas">
-            <span>CALÇAS</span>
-            <small>02</small>
-            <strong>↗</strong>
+
+            <span>
+              CALÇAS
+            </span>
+
+            <small>
+              02
+            </small>
+
+            <strong>
+              ↗
+            </strong>
+
           </Link>
+
+
+
+          {/* SHORTS */}
 
           <Link href="/loja/shorts">
-            <span>SHORTS</span>
-            <small>03</small>
-            <strong>↗</strong>
+
+            <span>
+              SHORTS
+            </span>
+
+            <small>
+              03
+            </small>
+
+            <strong>
+              ↗
+            </strong>
+
           </Link>
+
+
+
+          {/* BONÉS */}
 
           <Link href="/loja/bones">
-            <span>BONÉS</span>
-            <small>04</small>
-            <strong>↗</strong>
+
+            <span>
+              BONÉS
+            </span>
+
+            <small>
+              04
+            </small>
+
+            <strong>
+              ↗
+            </strong>
+
           </Link>
+
+
+
+          {/* UPCYCLING */}
 
           <Link href="/loja/upcycling">
-            <span>UPCYCLING</span>
-            <small>05</small>
-            <strong>↗</strong>
+
+            <span>
+              UPCYCLING
+            </span>
+
+            <small>
+              05
+            </small>
+
+            <strong>
+              ↗
+            </strong>
+
           </Link>
 
+
         </div>
+
       </section>
 
-      {/* ABOUT */}
-      <section className="about" id="about">
-        <p>EST. 2025 — BRASIL</p>
+
+
+      {/* =====================================================
+          SOBRE / ABOUT
+          =====================================================
+          Área institucional da marca.
+          ===================================================== */}
+
+      <section
+        className="about"
+        id="about"
+      >
+
+
+        {/* INFORMAÇÃO DA MARCA */}
+
+        <p>
+          EST. 2025 — BRASIL
+        </p>
+
+
+        {/* FRASE PRINCIPAL */}
 
         <h2>
+
           NÃO É SÓ
           <br />
+
           O QUE VOCÊ VESTE.
           <br />
-          <span>É O QUE VOCÊ CARREGA.</span>
+
+          <span>
+            É O QUE VOCÊ CARREGA.
+          </span>
+
         </h2>
+
+
       </section>
 
-      {/* FOOTER */}
+
+
+      {/* =====================================================
+          FOOTER / RODAPÉ
+          =====================================================
+          Última área da página.
+
+          Contém:
+          - Logo
+          - Copyright
+          - Instagram
+          - Contato
+          - País
+          ===================================================== */}
+
       <footer className="footer">
-        <div className="footerLogo">PÁDUA</div>
+
+
+        {/* LOGO DO RODAPÉ */}
+
+        <div className="footerLogo">
+          PÁDUA
+        </div>
+
+
+
+        {/* PARTE INFERIOR DO RODAPÉ */}
 
         <div className="footerBottom">
-          <span>© 2026 PÁDUA</span>
+
+
+          {/* COPYRIGHT */}
+
+          <span>
+            © 2026 PÁDUA
+          </span>
+
+
+          {/* LINKS */}
 
           <div>
-            <a href="#">INSTAGRAM</a>
-            <a href="#">CONTATO</a>
+
+            <a href="#">
+              INSTAGRAM
+            </a>
+
+            <a href="#">
+              CONTATO
+            </a>
+
           </div>
 
-          <span>BRASIL</span>
+
+          {/* LOCALIZAÇÃO */}
+
+          <span>
+            BRASIL
+          </span>
+
+
         </div>
+
       </footer>
+
+
     </main>
   );
 }
