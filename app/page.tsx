@@ -26,24 +26,26 @@ import Link from "next/link";
 const products = [
   {
     name: "Pádua Globe",
+    slug: "padua-globe",
     category: "Camiseta",
     price: "R$ 149,90",
-    image: "/images/globe.jpg",
+    image: "/site_padua/images/globe.jpg",
   },
   {
     name: "Pádua 1980",
+    slug: "padua-1980",
     category: "Camiseta",
     price: "R$ 159,90",
-    image: "/images/1980.jpg",
+    image: "/site_padua/images/1980.jpg",
   },
   {
     name: "Pádua Essential",
+    slug: "padua-essential",
     category: "Camiseta",
     price: "R$ 129,90",
-    image: "/images/essential.jpg",
+    image: "/site_padua/images/essential.jpg",
   },
 ];
-
 
 /* =========================================================
    FUNÇÃO PRINCIPAL - HOME

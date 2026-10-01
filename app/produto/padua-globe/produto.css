@@ -1,0 +1,432 @@
+/* =========================================================
+   PÁGINA DO PRODUTO
+   ========================================================= */
+
+.productPage {
+  width: 100%;
+  background: #f2f0e9;
+  color: #111;
+}
+
+
+/* CAMINHO */
+
+.productBreadcrumb {
+  padding: 25px 4%;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  font-size: 9px;
+  letter-spacing: 1px;
+
+  border-top: 1px solid #d0cdc4;
+  border-bottom: 1px solid #d0cdc4;
+}
+
+.productBreadcrumb a {
+  color: #777;
+}
+
+.productBreadcrumb a:hover {
+  color: #111;
+}
+
+.productBreadcrumb strong {
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   LAYOUT
+   ========================================================= */
+
+.productLayout {
+  width: 100%;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(380px, 0.7fr);
+
+  align-items: start;
+}
+
+
+/* =========================================================
+   GALERIA
+   ========================================================= */
+
+.productGallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+  gap: 2px;
+}
+
+.productPhoto {
+  width: 100%;
+
+  aspect-ratio: 4 / 5;
+
+  background: #e1ded5;
+
+  overflow: hidden;
+}
+
+.productPhoto img {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  object-fit: cover;
+  object-position: center;
+}
+
+
+/* =========================================================
+   INFORMAÇÕES
+   ========================================================= */
+
+.productDetails {
+  padding: 65px 45px;
+
+  position: sticky;
+  top: 0;
+}
+
+.productCategory {
+  margin-bottom: 15px;
+
+  font-size: 9px;
+  letter-spacing: 2px;
+
+  color: #777;
+}
+
+.productHeading h1 {
+  font-size: clamp(45px, 4.5vw, 75px);
+
+  line-height: 0.9;
+  letter-spacing: -4px;
+
+  font-weight: 700;
+}
+
+.productPrice {
+  margin-top: 25px;
+
+  font-size: 16px;
+}
+
+
+/* =========================================================
+   OPÇÕES
+   ========================================================= */
+
+.productOption {
+  margin-top: 55px;
+}
+
+.optionHeader {
+  margin-bottom: 15px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+.optionHeader strong {
+  font-size: 9px;
+}
+
+.sizeGuide {
+  font-size: 9px;
+
+  border-bottom: 1px solid #111;
+
+  padding-bottom: 3px;
+}
+
+
+/* =========================================================
+   CORES
+   ========================================================= */
+
+.colorOptions {
+  display: flex;
+
+  gap: 10px;
+}
+
+.colorButton {
+  width: 42px;
+  height: 42px;
+
+  padding: 4px;
+
+  border: 1px solid transparent;
+
+  border-radius: 50%;
+}
+
+.colorButton.active {
+  border-color: #111;
+}
+
+.colorButton span {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  border-radius: 50%;
+
+  border: 1px solid #aaa;
+}
+
+.colorOffWhite {
+  background: #ece7da;
+}
+
+.colorBlack {
+  background: #111;
+}
+
+
+/* =========================================================
+   TAMANHOS
+   ========================================================= */
+
+.sizeOptions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+
+  gap: 6px;
+}
+
+.sizeButton {
+  height: 52px;
+
+  border: 1px solid #aaa;
+
+  font-size: 11px;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border 0.2s ease;
+}
+
+.sizeButton:hover {
+  border-color: #111;
+}
+
+.sizeButton.active {
+  background: #111;
+  color: #f2f0e9;
+
+  border-color: #111;
+}
+
+
+/* =========================================================
+   ADICIONAR À SACOLA
+   ========================================================= */
+
+.addToCart {
+  width: 100%;
+  height: 65px;
+
+  margin-top: 30px;
+
+  padding: 0 22px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background: #111;
+  color: #f2f0e9;
+
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+
+  transition:
+    background 0.25s ease,
+    color 0.25s ease;
+}
+
+.addToCart:hover {
+  background: #d7ff37;
+  color: #111;
+}
+
+
+/* =========================================================
+   DESCRIÇÃO
+   ========================================================= */
+
+.productDescription {
+  margin-top: 55px;
+
+  border-top: 1px solid #aaa;
+}
+
+.descriptionItem {
+  padding: 20px 0;
+
+  border-bottom: 1px solid #aaa;
+
+  display: grid;
+  grid-template-columns: 120px 1fr;
+
+  gap: 25px;
+}
+
+.descriptionItem span {
+  font-size: 8px;
+  letter-spacing: 1.5px;
+}
+
+.descriptionItem p {
+  font-size: 11px;
+  line-height: 1.6;
+
+  color: #555;
+}
+
+
+/* =========================================================
+   TABLET
+   ========================================================= */
+
+@media (max-width: 1024px) {
+
+  .productLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .productDetails {
+    position: static;
+
+    padding: 60px 4% 90px;
+  }
+
+  .productHeading h1 {
+    font-size: clamp(50px, 9vw, 80px);
+  }
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 600px) {
+
+  .productBreadcrumb {
+    padding: 18px 16px;
+
+    overflow-x: auto;
+
+    white-space: nowrap;
+  }
+
+
+  /* GALERIA */
+
+  .productGallery {
+    display: flex;
+
+    overflow-x: auto;
+
+    scroll-snap-type: x mandatory;
+
+    gap: 2px;
+
+    scrollbar-width: none;
+  }
+
+  .productGallery::-webkit-scrollbar {
+    display: none;
+  }
+
+  .productPhoto {
+    min-width: 100%;
+
+    aspect-ratio: 4 / 5;
+
+    scroll-snap-align: start;
+  }
+
+
+  /* INFORMAÇÕES */
+
+  .productDetails {
+    padding: 40px 16px 75px;
+  }
+
+  .productCategory {
+    font-size: 8px;
+  }
+
+  .productHeading h1 {
+    font-size: 14vw;
+
+    line-height: 0.88;
+
+    letter-spacing: -3px;
+  }
+
+  .productPrice {
+    margin-top: 18px;
+
+    font-size: 15px;
+  }
+
+
+  /* OPÇÕES */
+
+  .productOption {
+    margin-top: 45px;
+  }
+
+  .sizeOptions {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .sizeButton {
+    height: 50px;
+  }
+
+
+  /* SACOLA */
+
+  .addToCart {
+    height: 60px;
+
+    margin-top: 25px;
+  }
+
+
+  /* DESCRIÇÃO */
+
+  .productDescription {
+    margin-top: 45px;
+  }
+
+  .descriptionItem {
+    grid-template-columns: 1fr;
+
+    gap: 12px;
+  }
+
+  .descriptionItem p {
+    max-width: 90%;
+  }
+}
