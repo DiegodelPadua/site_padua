@@ -135,7 +135,7 @@
     margin: 0;
   
     font-size: clamp(55px, 8vw, 120px);
-    line-height: 0.9;
+    line-height: 1.09;
     letter-spacing: -6px;
     font-weight: 600;
   }
@@ -346,7 +346,7 @@
     margin: 100px 0;
   
     font-size: clamp(80px, 13vw, 190px);
-    line-height: 0.74;
+    line-height: 1.04;
     letter-spacing: -10px;
     font-weight: 700;
   }
@@ -382,7 +382,7 @@
     margin: 50px 0 80px;
   
     font-size: clamp(100px, 17vw, 250px);
-    line-height: 0.72;
+    line-height: 1.04;
     letter-spacing: -12px;
   }
   
@@ -529,12 +529,12 @@
   
     .upcyclingManifestoText p:first-child {
       font-size: 15vw;
+      line-height: 1.05;
       letter-spacing: -4px;
     }
   
     .upcyclingManifestoText p:last-child {
       margin-top: 50px;
-  
       font-size: 14px;
     }
   

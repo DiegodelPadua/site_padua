@@ -377,9 +377,9 @@ export default function Home() {
 
           {/* LINK UPCYCLING */}
 
-          <a href="#">
-            EXPLORAR UPCYCLING →
-          </a>
+         <Link href="/loja/upcycling">
+          EXPLORAR UPCYCLING →
+         </Link>
 
 
         </div>
@@ -609,7 +609,11 @@ export default function Home() {
 
           <div>
 
-            <a href="#">
+            <a
+              href="https://www.instagram.com/padua.culture/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               INSTAGRAM
             </a>
 

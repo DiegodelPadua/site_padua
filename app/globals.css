@@ -233,7 +233,7 @@ button {
 
 .upcycling h2 {
   font-size: clamp(65px, 10vw, 150px);
-  line-height: 0.98;
+  line-height: 1.08;
   letter-spacing: -7px;
 }
 
@@ -584,7 +584,7 @@ button {
 
   .upcycling h2 {
   font-size: clamp(38px, 11vw, 58px);
-  line-height: 0.92;
+  line-height: 1.08;
   letter-spacing: -3px;
 
   width: 100%;
