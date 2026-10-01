@@ -1,6 +1,6 @@
 import Link from "next/link";
 import "./upcycling.css";
-
+import "../../componentes/loja/store.css";
 import StoreHeader from "../../componentes/loja/StoreHeader";
 
 
