@@ -1,0 +1,633 @@
+/* =========================================================
+   PÁDUA UPCYCLING
+   PREMIUM / EDITORIAL EXPERIENCE
+   ========================================================= */
+
+   .upcyclingPage {
+    width: 100%;
+    min-height: 100vh;
+    background: #101010;
+    color: #e8e5dc;
+    overflow-x: hidden;
+  }
+  
+  
+  /* =========================================================
+     HEADER
+     ========================================================= */
+  
+  .upcyclingPage .storeHeader {
+    background: #101010;
+    color: #e8e5dc;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  }
+  
+  .upcyclingPage .storeHeader a,
+  .upcyclingPage .storeHeader button {
+    color: #e8e5dc;
+  }
+  
+  
+  /* =========================================================
+     HERO
+     ========================================================= */
+  
+  .upcyclingHero {
+    min-height: calc(100vh - 82px);
+    padding: 35px 4% 45px;
+  
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  
+  .upcyclingHeroTop {
+    display: flex;
+    justify-content: space-between;
+  
+    font-size: 9px;
+    letter-spacing: 2px;
+    opacity: 0.65;
+  }
+  
+  
+  /* =========================================================
+     HERO TITLE
+     ========================================================= */
+  
+  .upcyclingHeroTitle {
+    margin: 100px 0;
+  }
+  
+  .upcyclingHeroTitle p {
+    margin: 0 0 8px;
+  
+    font-size: 11px;
+    letter-spacing: 3px;
+  }
+  
+  .upcyclingHeroTitle h1,
+  .upcyclingHeroTitle h2 {
+    margin: 0;
+  
+    font-size: clamp(80px, 13vw, 200px);
+    line-height: 0.77;
+    letter-spacing: -10px;
+    font-weight: 700;
+  }
+  
+  .upcyclingHeroTitle h2 {
+    color: #a7a49b;
+  }
+  
+  .upcyclingHeroSecond {
+    margin-top: 50px !important;
+  }
+  
+  
+  /* =========================================================
+     HERO BOTTOM
+     ========================================================= */
+  
+  .upcyclingHeroBottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  
+    padding-top: 20px;
+  
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  
+  .upcyclingHeroBottom p {
+    margin: 0;
+  
+    font-size: 9px;
+    line-height: 1.6;
+    letter-spacing: 1.5px;
+  }
+  
+  
+  /* =========================================================
+     MANIFESTO
+     ========================================================= */
+  
+  .upcyclingManifesto {
+    min-height: 700px;
+    padding: 120px 4%;
+  
+    background: #dedbd1;
+    color: #111;
+  }
+  
+  .upcyclingManifesto > span {
+    font-size: 9px;
+    letter-spacing: 2px;
+  }
+  
+  .upcyclingManifestoText {
+    max-width: 1100px;
+    margin: 120px 0 0 auto;
+  }
+  
+  .upcyclingManifestoText p:first-child {
+    max-width: 900px;
+    margin: 0;
+  
+    font-size: clamp(55px, 8vw, 120px);
+    line-height: 0.9;
+    letter-spacing: -6px;
+    font-weight: 600;
+  }
+  
+  .upcyclingManifestoText p:last-child {
+    max-width: 500px;
+    margin: 80px 0 0 auto;
+  
+    font-size: 18px;
+    line-height: 1.5;
+  }
+  
+  
+  /* =========================================================
+     COLLECTION
+     ========================================================= */
+  
+  .upcyclingCollection {
+    padding: 100px 4% 150px;
+  }
+  
+  .upcyclingSectionHeader {
+    padding-bottom: 25px;
+  
+    display: flex;
+    justify-content: space-between;
+  
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  
+    font-size: 9px;
+    letter-spacing: 2px;
+  }
+  
+  
+  /* =========================================================
+     PEÇAS
+     ========================================================= */
+  
+  .upcyclingPiece {
+    min-height: 800px;
+    padding: 120px 0;
+  
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.6fr);
+    gap: 8vw;
+    align-items: center;
+  
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  
+  .upcyclingPieceReverse {
+    grid-template-columns: minmax(300px, 0.6fr) minmax(0, 1.4fr);
+  }
+  
+  .upcyclingPieceReverse .upcyclingPieceImage {
+    order: 2;
+  }
+  
+  .upcyclingPieceReverse .upcyclingPieceContent {
+    order: 1;
+  }
+  
+  
+  /* =========================================================
+     IMAGEM DA PEÇA
+     ========================================================= */
+  
+  .upcyclingPieceImage {
+    position: relative;
+  
+    width: 100%;
+    aspect-ratio: 4 / 5;
+  
+    overflow: hidden;
+    background: #252525;
+  }
+  
+  .upcyclingPieceImage img {
+    width: 100%;
+    height: 100%;
+  
+    display: block;
+  
+    object-fit: cover;
+  
+    transition: transform 0.8s ease;
+  }
+  
+  .upcyclingPiece:hover .upcyclingPieceImage img {
+    transform: scale(1.025);
+  }
+  
+  .upcyclingPieceNumber {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+  
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #fff;
+  }
+  
+  
+  /* =========================================================
+     CONTEÚDO DA PEÇA
+     ========================================================= */
+  
+  .upcyclingPieceContent {
+    min-width: 0;
+  }
+  
+  .upcyclingLimited {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #999;
+  }
+  
+  .upcyclingPieceContent h2 {
+    margin: 30px 0 25px;
+  
+    font-size: clamp(45px, 6vw, 90px);
+    line-height: 0.9;
+    letter-spacing: -5px;
+    font-weight: 600;
+  }
+  
+  .upcyclingPieceContent p {
+    max-width: 350px;
+    margin: 0 0 40px;
+  
+    color: #aaa;
+  
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  
+  .upcyclingPieceContent strong {
+    display: block;
+  
+    margin-bottom: 45px;
+  
+    font-size: 13px;
+    font-weight: 500;
+  }
+  
+  
+  /* =========================================================
+     BOTÃO
+     ========================================================= */
+  
+  .upcyclingPieceContent button {
+    width: 100%;
+    padding: 20px 0;
+  
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  
+    border: none;
+    border-top: 1px solid #e8e5dc;
+    border-bottom: 1px solid #e8e5dc;
+  
+    background: transparent;
+    color: #e8e5dc;
+  
+    font-size: 10px;
+    letter-spacing: 2px;
+  
+    cursor: pointer;
+  
+    transition:
+      padding 0.3s ease,
+      background 0.3s ease,
+      color 0.3s ease;
+  }
+  
+  .upcyclingPieceContent button:hover {
+    padding-left: 15px;
+    padding-right: 15px;
+  
+    background: #e8e5dc;
+    color: #111;
+  }
+  
+  
+  /* =========================================================
+     CONCEITO
+     ========================================================= */
+  
+  .upcyclingConcept {
+    min-height: 100vh;
+    padding: 100px 4%;
+  
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  
+    background: #e8e5dc;
+    color: #111;
+  }
+  
+  .upcyclingConcept > span {
+    font-size: 9px;
+    letter-spacing: 2px;
+  }
+  
+  .upcyclingConcept h2 {
+    margin: 100px 0;
+  
+    font-size: clamp(80px, 13vw, 190px);
+    line-height: 0.74;
+    letter-spacing: -10px;
+    font-weight: 700;
+  }
+  
+  .upcyclingConcept p {
+    max-width: 400px;
+    margin-left: auto;
+  
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  
+  
+  /* =========================================================
+     FINAL
+     ========================================================= */
+  
+  .upcyclingFinal {
+    min-height: 800px;
+    padding: 100px 4%;
+  
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  
+  .upcyclingFinal > p {
+    font-size: 9px;
+    letter-spacing: 2px;
+  }
+  
+  .upcyclingFinal h2 {
+    margin: 50px 0 80px;
+  
+    font-size: clamp(100px, 17vw, 250px);
+    line-height: 0.72;
+    letter-spacing: -12px;
+  }
+  
+  .upcyclingFinal a {
+    padding: 25px 0;
+  
+    display: flex;
+    justify-content: space-between;
+  
+    border-top: 1px solid #777;
+    border-bottom: 1px solid #777;
+  
+    color: #e8e5dc;
+  
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-decoration: none;
+  }
+  
+  
+  /* =========================================================
+     FOOTER
+     ========================================================= */
+  
+  .upcyclingFooter {
+    padding: 100px 4% 30px;
+  
+    background: #080808;
+  }
+  
+  .upcyclingFooter > div {
+    font-size: clamp(100px, 22vw, 330px);
+    line-height: 0.7;
+    letter-spacing: -15px;
+    font-weight: 900;
+  }
+  
+  .upcyclingFooter section {
+    margin-top: 80px;
+    padding-top: 20px;
+  
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+  
+    font-size: 9px;
+    letter-spacing: 2px;
+  }
+  
+  .upcyclingFooter a {
+    justify-self: center;
+  
+    color: #e8e5dc;
+    text-decoration: none;
+  }
+  
+  .upcyclingFooter span:last-child {
+    justify-self: end;
+  }
+  
+  
+  /* =========================================================
+     TABLET
+     ========================================================= */
+  
+  @media (max-width: 1024px) {
+  
+    .upcyclingHero {
+      min-height: 800px;
+      padding-left: 20px;
+      padding-right: 20px;
+    }
+  
+    .upcyclingPiece {
+      gap: 50px;
+    }
+  
+    .upcyclingManifesto,
+    .upcyclingCollection,
+    .upcyclingConcept,
+    .upcyclingFinal,
+    .upcyclingFooter {
+      padding-left: 20px;
+      padding-right: 20px;
+    }
+  }
+  
+  
+  /* =========================================================
+     MOBILE
+     ========================================================= */
+  
+  @media (max-width: 600px) {
+  
+    .upcyclingHero {
+      min-height: calc(100svh - 64px);
+      padding: 25px 16px 30px;
+    }
+  
+    .upcyclingHeroTop {
+      font-size: 7px;
+      gap: 20px;
+    }
+  
+    .upcyclingHeroTitle {
+      margin: 70px 0;
+    }
+  
+    .upcyclingHeroTitle h1,
+    .upcyclingHeroTitle h2 {
+      font-size: 16vw;
+      line-height: 0.83;
+      letter-spacing: -4px;
+    }
+  
+    .upcyclingHeroTitle p {
+      font-size: 8px;
+    }
+  
+    .upcyclingHeroSecond {
+      margin-top: 35px !important;
+    }
+  
+    .upcyclingHeroBottom {
+      gap: 20px;
+    }
+  
+    .upcyclingHeroBottom p {
+      font-size: 7px;
+    }
+  
+  
+    /* MANIFESTO */
+  
+    .upcyclingManifesto {
+      min-height: auto;
+      padding: 80px 16px;
+    }
+  
+    .upcyclingManifestoText {
+      margin-top: 80px;
+    }
+  
+    .upcyclingManifestoText p:first-child {
+      font-size: 15vw;
+      letter-spacing: -4px;
+    }
+  
+    .upcyclingManifestoText p:last-child {
+      margin-top: 50px;
+  
+      font-size: 14px;
+    }
+  
+  
+    /* COLLECTION */
+  
+    .upcyclingCollection {
+      padding: 70px 16px 90px;
+    }
+  
+    .upcyclingPiece,
+    .upcyclingPieceReverse {
+      min-height: auto;
+      padding: 70px 0;
+  
+      display: flex;
+      flex-direction: column;
+      gap: 35px;
+    }
+  
+    .upcyclingPieceReverse .upcyclingPieceImage,
+    .upcyclingPieceReverse .upcyclingPieceContent {
+      order: initial;
+    }
+  
+    .upcyclingPieceImage {
+      width: 100%;
+    }
+  
+    .upcyclingPieceContent {
+      width: 100%;
+    }
+  
+    .upcyclingPieceContent h2 {
+      font-size: 14vw;
+      letter-spacing: -3px;
+    }
+  
+  
+    /* CONCEITO */
+  
+    .upcyclingConcept {
+      min-height: 800px;
+      padding: 80px 16px;
+    }
+  
+    .upcyclingConcept h2 {
+      font-size: 17vw;
+      letter-spacing: -5px;
+      line-height: 1.05;
+    }
+  
+    .upcyclingConcept p {
+      font-size: 14px;
+    }
+  
+  
+    /* FINAL */
+  
+    .upcyclingFinal {
+      min-height: 650px;
+      padding: 80px 16px;
+    }
+  
+    .upcyclingFinal h2 {
+      font-size: 22vw;
+      letter-spacing: -5px;
+      line-height: 1.05;
+    }
+  
+  
+    /* FOOTER */
+  
+    .upcyclingFooter {
+      padding: 70px 16px 25px;
+    }
+  
+    .upcyclingFooter > div {
+      font-size: 27vw;
+      letter-spacing: -7px;
+    }
+  
+    .upcyclingFooter section {
+      grid-template-columns: 1fr 1fr;
+      row-gap: 20px;
+    }
+  
+    .upcyclingFooter a {
+      justify-self: end;
+    }
+  
+    .upcyclingFooter span:last-child {
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+  }

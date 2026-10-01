@@ -1,0 +1,942 @@
+/* =========================================================
+   PÁDUA — PÁGINA CAMISETAS
+   =========================================================
+   Estilos exclusivos da página:
+
+   /loja/camisetas
+
+   Estrutura:
+   - Página
+   - Header
+   - Hero da categoria
+   - Barra da categoria
+   - Grid de produtos
+   - Próxima categoria
+   - Footer
+   - Responsividade
+   ========================================================= */
+
+
+/* =========================================================
+   PÁGINA
+   ========================================================= */
+
+   .storePage {
+    width: 100%;
+    min-height: 100vh;
+  
+    background: #f2f0e9;
+    color: #111;
+  
+    overflow-x: hidden;
+  }
+  
+  
+  /* =========================================================
+     HEADER
+     ========================================================= */
+  
+  .storeHeader {
+    width: 100%;
+    height: 82px;
+  
+    padding: 0 4%;
+  
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+  
+    align-items: center;
+  
+    border-bottom: 1px solid #c9c6bd;
+  
+    background: #f2f0e9;
+  }
+  
+  
+  /* =========================================================
+     LOGO
+     ========================================================= */
+  
+  .storeLogo {
+    justify-self: start;
+  
+    color: #111;
+  
+    font-size: 20px;
+    font-weight: 900;
+  
+    letter-spacing: -1px;
+  
+    text-decoration: none;
+  }
+  
+  
+  /* =========================================================
+     NAVEGAÇÃO
+     ========================================================= */
+  
+  .storeNav {
+    display: flex;
+  
+    align-items: center;
+  
+    gap: 28px;
+  }
+  
+  
+  .storeNav a {
+    position: relative;
+  
+    color: #111;
+  
+    font-size: 10px;
+    font-weight: 700;
+  
+    letter-spacing: 1px;
+  
+    text-decoration: none;
+  
+    transition: opacity 0.25s ease;
+  }
+  
+  
+  .storeNav a:hover {
+    opacity: 0.45;
+  }
+  
+  
+  /* =========================================================
+     AÇÕES DO HEADER
+     ========================================================= */
+  
+  .storeActions {
+    justify-self: end;
+  
+    display: flex;
+  
+    align-items: center;
+  
+    gap: 25px;
+  }
+  
+  
+  .storeActions a,
+  .storeActions button {
+    color: #111;
+  
+    font-family: Arial, Helvetica, sans-serif;
+  
+    font-size: 10px;
+    font-weight: 700;
+  
+    letter-spacing: 1px;
+  
+    text-decoration: none;
+  }
+  
+  
+  .storeActions button {
+    padding: 0;
+  
+    background: transparent;
+  
+    border: none;
+  
+    cursor: pointer;
+  }
+  
+  
+  .storeActions a:hover,
+  .storeActions button:hover {
+    opacity: 0.5;
+  }
+  
+  
+  /* =========================================================
+     HERO DA CATEGORIA
+     ========================================================= */
+  
+  .categoryHero {
+    min-height: 420px;
+  
+    padding: 75px 4% 45px;
+  
+    display: flex;
+    flex-direction: column;
+  
+    justify-content: flex-end;
+  }
+  
+  
+  /* LOJA / 01 */
+  
+  .categoryHero > span {
+    margin-bottom: 25px;
+  
+    font-size: 9px;
+  
+    letter-spacing: 2px;
+  }
+  
+  
+  /* TÍTULO CAMISETAS */
+  
+  .categoryHero h1 {
+    margin: 0;
+  
+    font-size: clamp(80px, 13vw, 200px);
+  
+    font-weight: 700;
+  
+    line-height: 0.75;
+  
+    letter-spacing: -10px;
+  
+    text-transform: uppercase;
+  }
+  
+  
+  /* QUANTIDADE DE PRODUTOS */
+  
+  .categoryHero p {
+    margin-top: 35px;
+  
+    font-size: 9px;
+  
+    letter-spacing: 2px;
+  
+    color: #666;
+  }
+  
+  
+  /* =========================================================
+     BARRA DA CATEGORIA
+     ========================================================= */
+  
+  .categoryBar {
+    margin: 0 4%;
+  
+    padding: 18px 0;
+  
+    display: flex;
+  
+    align-items: center;
+    justify-content: space-between;
+  
+    border-top: 1px solid #aaa;
+    border-bottom: 1px solid #aaa;
+  
+    font-size: 9px;
+  
+    letter-spacing: 1.5px;
+  }
+  
+  
+  /* =========================================================
+     GRID DOS PRODUTOS
+     ========================================================= */
+  
+  .storeProducts {
+    padding: 40px 4% 120px;
+  
+    display: grid;
+  
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  
+    gap: 25px;
+  }
+  
+  
+  /* =========================================================
+     CARD DO PRODUTO
+     ========================================================= */
+  
+  .storeProduct {
+    min-width: 0;
+  }
+  
+  
+  /* =========================================================
+     IMAGEM DO PRODUTO
+     ========================================================= */
+  
+  .storeProductImage {
+    position: relative;
+  
+    width: 100%;
+  
+    aspect-ratio: 4 / 5;
+  
+    overflow: hidden;
+  
+    background: #dedbd2;
+  }
+  
+  
+  .storeProductImage img {
+    width: 100%;
+    height: 100%;
+  
+    display: block;
+  
+    object-fit: contain;
+    object-position: center;
+  
+    transition: transform 0.6s ease;
+  }
+  
+  
+  /* ZOOM AO PASSAR O MOUSE */
+  
+  .storeProduct:hover .storeProductImage img {
+    transform: scale(1.025);
+  }
+  
+  
+  /* =========================================================
+     BOTÃO +
+     ========================================================= */
+  
+  .storeQuickAdd {
+    position: absolute;
+  
+    right: 15px;
+    bottom: 15px;
+  
+    width: 44px;
+    height: 44px;
+  
+    display: flex;
+  
+    align-items: center;
+    justify-content: center;
+  
+    border: 1px solid #111;
+    border-radius: 50%;
+  
+    background: #f2f0e9;
+  
+    color: #111;
+  
+    font-size: 24px;
+    font-weight: 300;
+  
+    cursor: pointer;
+  
+    transition:
+      background 0.25s ease,
+      color 0.25s ease,
+      transform 0.25s ease;
+  }
+  
+  
+  .storeQuickAdd:hover {
+    background: #111;
+  
+    color: #f2f0e9;
+  
+    transform: rotate(90deg);
+  }
+  
+  
+  /* =========================================================
+     INFORMAÇÕES DO PRODUTO
+     ========================================================= */
+  
+  .storeProductInfo {
+    padding-top: 15px;
+  
+    display: flex;
+  
+    align-items: flex-start;
+    justify-content: space-between;
+  
+    gap: 20px;
+  }
+  
+  
+  /* NOME */
+  
+  .storeProductInfo h2 {
+    margin: 0;
+  
+    font-size: 13px;
+    font-weight: 700;
+  
+    text-transform: uppercase;
+  }
+  
+  
+  /* CATEGORIA */
+  
+  .storeProductInfo p {
+    margin-top: 5px;
+  
+    font-size: 10px;
+  
+    color: #777;
+  }
+  
+  
+  /* PREÇO */
+  
+  .storeProductInfo strong {
+    font-size: 12px;
+    font-weight: 600;
+  
+    white-space: nowrap;
+  }
+  
+  
+  /* =========================================================
+     PRÓXIMA CATEGORIA
+     ========================================================= */
+  
+  .nextCategory {
+    padding: 80px 4% 100px;
+  
+    border-top: 1px solid #aaa;
+  }
+  
+  
+  /* TEXTO PEQUENO */
+  
+  .nextCategory > span {
+    display: block;
+  
+    margin-bottom: 35px;
+  
+    font-size: 9px;
+  
+    letter-spacing: 2px;
+  
+    color: #777;
+  }
+  
+  
+  /* LINK CALÇAS */
+  
+  .nextCategory > a {
+    width: 100%;
+  
+    display: flex;
+  
+    align-items: center;
+    justify-content: space-between;
+  
+    color: #111;
+  
+    font-size: clamp(60px, 10vw, 150px);
+    font-weight: 700;
+  
+    line-height: 0.85;
+  
+    letter-spacing: -7px;
+  
+    text-decoration: none;
+  
+    transition:
+      padding-left 0.3s ease,
+      opacity 0.3s ease;
+  }
+  
+  
+  .nextCategory > a:hover {
+    padding-left: 15px;
+  
+    opacity: 0.6;
+  }
+  
+  
+  /* SETA */
+  
+  .nextCategory strong {
+    font-size: clamp(35px, 5vw, 70px);
+  
+    font-weight: 400;
+  }
+  
+  
+  /* =========================================================
+     FOOTER
+     ========================================================= */
+  
+  .storeFooter {
+    padding: 80px 4% 25px;
+  
+    background: #111;
+  
+    color: #f2f0e9;
+  }
+  
+  
+  /* LOGO GRANDE */
+  
+  .storeFooterLogo {
+    font-size: clamp(100px, 22vw, 330px);
+  
+    font-weight: 900;
+  
+    line-height: 0.75;
+  
+    letter-spacing: -15px;
+  
+    overflow: hidden;
+  }
+  
+  
+  /* PARTE INFERIOR */
+  
+  .storeFooterBottom {
+    margin-top: 70px;
+  
+    padding-top: 20px;
+  
+    display: grid;
+  
+    grid-template-columns: 1fr 1fr 1fr;
+  
+    align-items: center;
+  
+    border-top: 1px solid #555;
+  
+    font-size: 9px;
+  
+    letter-spacing: 1.5px;
+  }
+  
+  
+  /* LINK VOLTAR */
+  
+  .storeFooterBottom a {
+    justify-self: center;
+  
+    color: #f2f0e9;
+  
+    text-decoration: none;
+  
+    transition: opacity 0.25s ease;
+  }
+  
+  
+  .storeFooterBottom a:hover {
+    opacity: 0.5;
+  }
+  
+  
+  /* BRASIL */
+  
+  .storeFooterBottom span:last-child {
+    justify-self: end;
+  }
+  
+  
+  /* =========================================================
+     TABLET
+     ========================================================= */
+  
+  @media (max-width: 1024px) {
+  
+  
+    /* =======================================================
+       HEADER
+       ======================================================= */
+  
+    .storeHeader {
+      height: 70px;
+  
+      padding: 0 20px;
+  
+      grid-template-columns: 1fr auto;
+    }
+  
+  
+    .storeLogo {
+      font-size: 18px;
+    }
+  
+  
+    /* ESCONDE MENU CENTRAL */
+  
+    .storeNav {
+      display: none;
+    }
+  
+  
+    .storeActions {
+      gap: 18px;
+    }
+  
+  
+    /* =======================================================
+       HERO
+       ======================================================= */
+  
+    .categoryHero {
+      min-height: 340px;
+  
+      padding:
+        60px 20px
+        40px;
+    }
+  
+  
+    .categoryHero h1 {
+      font-size: clamp(
+        65px,
+        15vw,
+        130px
+      );
+  
+      letter-spacing: -7px;
+    }
+  
+  
+    /* =======================================================
+       BARRA
+       ======================================================= */
+  
+    .categoryBar {
+      margin: 0 20px;
+    }
+  
+  
+    /* =======================================================
+       PRODUTOS
+       ======================================================= */
+  
+    .storeProducts {
+      padding:
+        30px 20px
+        90px;
+  
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+  
+      gap: 15px;
+    }
+  
+  
+    /* =======================================================
+       PRÓXIMA CATEGORIA
+       ======================================================= */
+  
+    .nextCategory {
+      padding:
+        70px 20px
+        80px;
+    }
+  
+  
+    .nextCategory > a {
+      font-size: clamp(
+        55px,
+        13vw,
+        110px
+      );
+  
+      letter-spacing: -5px;
+    }
+  
+  
+    /* =======================================================
+       FOOTER
+       ======================================================= */
+  
+    .storeFooter {
+      padding:
+        70px 20px
+        25px;
+    }
+  
+  
+    .storeFooterLogo {
+      letter-spacing: -10px;
+    }
+  
+  }
+  
+  
+  /* =========================================================
+     CELULAR
+     ========================================================= */
+  
+  @media (max-width: 600px) {
+  
+  
+    /* =======================================================
+       HEADER MOBILE
+       ======================================================= */
+  
+    .storeHeader {
+      height: 64px;
+  
+      padding: 0 16px;
+    }
+  
+  
+    .storeLogo {
+      font-size: 16px;
+    }
+  
+  
+    .storeActions {
+      gap: 14px;
+    }
+  
+  
+    .storeActions a,
+    .storeActions button {
+      font-size: 8px;
+  
+      letter-spacing: 0.8px;
+    }
+  
+  
+    /* =======================================================
+       HERO MOBILE
+       ======================================================= */
+  
+    .categoryHero {
+      min-height: 290px;
+  
+      padding:
+        50px 16px
+        30px;
+    }
+  
+  
+    .categoryHero > span {
+      margin-bottom: 18px;
+  
+      font-size: 8px;
+    }
+  
+  
+    .categoryHero h1 {
+      font-size: 15vw;
+  
+      line-height: 0.85;
+  
+      letter-spacing: -4px;
+    }
+  
+  
+    .categoryHero p {
+      margin-top: 25px;
+  
+      font-size: 8px;
+    }
+  
+  
+    /* =======================================================
+       BARRA DA CATEGORIA
+       ======================================================= */
+  
+    .categoryBar {
+      margin: 0 16px;
+  
+      padding: 14px 0;
+  
+      font-size: 8px;
+    }
+  
+  
+    /* =======================================================
+       PRODUTOS MOBILE
+       ======================================================= */
+  
+    .storeProducts {
+      padding:
+        25px 16px
+        70px;
+  
+      grid-template-columns: 1fr;
+  
+      gap: 45px;
+    }
+  
+  
+    /* =======================================================
+       CARD
+       ======================================================= */
+  
+    .storeProductImage {
+      aspect-ratio: 4 / 5;
+    }
+  
+  
+    .storeQuickAdd {
+      right: 12px;
+      bottom: 12px;
+  
+      width: 40px;
+      height: 40px;
+  
+      font-size: 21px;
+    }
+  
+  
+    .storeProductInfo {
+      padding-top: 12px;
+  
+      gap: 10px;
+    }
+  
+  
+    .storeProductInfo h2 {
+      font-size: 12px;
+    }
+  
+  
+    .storeProductInfo p {
+      font-size: 9px;
+    }
+  
+  
+    .storeProductInfo strong {
+      font-size: 11px;
+    }
+  
+  
+    /* =======================================================
+       PRÓXIMA CATEGORIA
+       ======================================================= */
+  
+    .nextCategory {
+      padding:
+        60px 16px
+        70px;
+    }
+  
+  
+    .nextCategory > span {
+      margin-bottom: 25px;
+  
+      font-size: 8px;
+    }
+  
+  
+    .nextCategory > a {
+      font-size: 16vw;
+  
+      letter-spacing: -4px;
+    }
+  
+  
+    .nextCategory strong {
+      font-size: 30px;
+    }
+  
+  
+    /* =======================================================
+       FOOTER MOBILE
+       ======================================================= */
+  
+    .storeFooter {
+      padding:
+        60px 16px
+        25px;
+    }
+  
+  
+    .storeFooterLogo {
+      font-size: 27vw;
+  
+      letter-spacing: -7px;
+    }
+  
+  
+    .storeFooterBottom {
+      margin-top: 50px;
+  
+      grid-template-columns: 1fr 1fr;
+  
+      row-gap: 20px;
+  
+      font-size: 8px;
+    }
+  
+  
+    /* VOLTAR AO INÍCIO */
+  
+    .storeFooterBottom a {
+      justify-self: end;
+    }
+  
+  
+    /* BRASIL */
+  
+    .storeFooterBottom span:last-child {
+      grid-column: 1 / -1;
+  
+      justify-self: start;
+    }
+  
+  }
+  
+  
+  /* =========================================================
+     CELULARES PEQUENOS
+     ========================================================= */
+  
+  @media (max-width: 420px) {
+  
+  
+    .storeHeader {
+      padding: 0 14px;
+    }
+  
+  
+    .storeActions {
+      gap: 10px;
+    }
+  
+  
+    /*
+       Em celulares muito pequenos escondemos BUSCAR
+       para evitar que o Header fique apertado.
+    */
+  
+    .storeActions a {
+      display: none;
+    }
+  
+  
+    .categoryHero {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+  
+  
+    .categoryHero h1 {
+      font-size: 14.5vw;
+  
+      letter-spacing: -3px;
+    }
+  
+  
+    .categoryBar {
+      margin-left: 14px;
+      margin-right: 14px;
+    }
+  
+  
+    .storeProducts {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+  
+  
+    .nextCategory {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+  
+  
+    .storeFooter {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+  
+  }

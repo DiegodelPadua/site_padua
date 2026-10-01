@@ -352,14 +352,14 @@ export default function Home() {
 
           <h2>
 
-            RECRIAR,
+            A MESMICE
             <br />
 
-            RESSIGNIFICAR.
+            NÃO VESTE
             <br />
 
             <em>
-              VESTIR DE NOVO.
+              A GENTE.
             </em>
 
           </h2>
