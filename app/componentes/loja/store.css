@@ -940,3 +940,880 @@
     }
   
   }
+  /* =========================================================
+   SACOLA - FUNDO
+   ========================================================= */
+
+.cartOverlay {
+  position: fixed;
+  inset: 0;
+
+  background: rgba(0, 0, 0, 0.45);
+
+  opacity: 0;
+  visibility: hidden;
+
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+
+  z-index: 9998;
+}
+
+.cartOverlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+
+/* =========================================================
+   SACOLA - PAINEL
+   ========================================================= */
+
+.cartDrawer {
+  position: fixed;
+
+  top: 0;
+  right: 0;
+
+  width: min(480px, 100%);
+  height: 100vh;
+
+  background: #f2f0e9;
+
+  transform: translateX(100%);
+
+  transition: transform 0.35s ease;
+
+  z-index: 9999;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.cartDrawer.open {
+  transform: translateX(0);
+}
+
+
+/* =========================================================
+   CABEÇALHO DA SACOLA
+   ========================================================= */
+
+.cartDrawerHeader {
+  min-height: 90px;
+
+  padding: 0 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  border-bottom: 1px solid #aaa;
+}
+
+.cartDrawerHeader h2 {
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+}
+
+.cartClose {
+  font-size: 28px;
+  line-height: 1;
+}
+
+
+/* =========================================================
+   CONTEÚDO DA SACOLA
+   ========================================================= */
+
+.cartDrawerContent {
+  flex: 1;
+
+  padding: 30px;
+
+  overflow-y: auto;
+}
+
+.cartDrawerContent p {
+  font-size: 11px;
+  color: #666;
+}
+
+
+/* =========================================================
+   SACOLA - MOBILE
+   ========================================================= */
+
+@media (max-width: 600px) {
+
+  .cartDrawer {
+    width: 100%;
+  }
+
+  .cartDrawerHeader {
+    min-height: 75px;
+    padding: 0 20px;
+  }
+
+  .cartDrawerContent {
+    padding: 20px;
+  }
+}
+/* =========================================================
+   PRODUTOS DA SACOLA
+   ========================================================= */
+
+   .cartItems {
+    width: 100%;
+  }
+  
+  .cartItem {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+  
+    gap: 20px;
+  
+    padding: 20px 0;
+  
+    border-bottom: 1px solid #aaa;
+  }
+  
+  
+  /* FOTO */
+  
+  .cartItemImage {
+    width: 110px;
+    aspect-ratio: 4 / 5;
+  
+    background: #e1ded5;
+  
+    overflow: hidden;
+  }
+  
+  .cartItemImage img {
+    width: 100%;
+    height: 100%;
+  
+    display: block;
+  
+    object-fit: cover;
+  }
+  
+  
+  /* INFORMAÇÕES */
+  
+  .cartItemInfo {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .cartItemInfo h3 {
+    margin: 0 0 8px;
+  
+    font-size: 13px;
+    font-weight: 700;
+  
+    text-transform: uppercase;
+  }
+  
+  .cartItemInfo p {
+    margin: 0 0 15px;
+  
+    font-size: 9px;
+    letter-spacing: 1px;
+  
+    color: #666;
+  }
+  
+  .cartItemInfo strong {
+    font-size: 12px;
+    font-weight: 700;
+  }
+  
+  
+  /* QUANTIDADE */
+  
+  .cartItemQuantity {
+    margin-top: auto;
+  
+    padding-top: 15px;
+  
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  
+  
+  /* =========================================================
+     SACOLA VAZIA
+     ========================================================= */
+  
+  .cartEmpty {
+    min-height: 300px;
+  
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .cartEmpty p {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+  }
+  
+  
+  /* =========================================================
+     RODAPÉ DA SACOLA
+     ========================================================= */
+  
+  .cartDrawerFooter {
+    padding: 25px 30px 30px;
+  
+    border-top: 1px solid #aaa;
+  
+    background: #f2f0e9;
+  }
+  
+  .cartSubtotal {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  
+    margin-bottom: 12px;
+  }
+  
+  .cartSubtotal span {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+  
+  .cartSubtotal strong {
+    font-size: 16px;
+  }
+  
+  
+  /* FRETE */
+  
+  .cartShipping {
+    margin-bottom: 22px;
+  
+    font-size: 8px;
+    letter-spacing: 1px;
+  
+    color: #666;
+  }
+  
+  
+  /* FINALIZAR */
+  
+  .cartCheckout {
+    width: 100%;
+    height: 62px;
+  
+    padding: 0 20px;
+  
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  
+    background: #111;
+    color: #f2f0e9;
+  
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  
+    transition:
+      background 0.25s ease,
+      color 0.25s ease;
+  }
+  
+  .cartCheckout:hover {
+    background: #d7ff37;
+    color: #111;
+  }
+  
+  
+  /* =========================================================
+     MOBILE
+     ========================================================= */
+  
+  @media (max-width: 600px) {
+  
+    .cartItem {
+      grid-template-columns: 90px 1fr;
+      gap: 15px;
+    }
+  
+    .cartItemImage {
+      width: 90px;
+    }
+  
+    .cartDrawerFooter {
+      padding: 20px;
+    }
+  
+  }
+  /* =========================================================
+   CONTROLES DE QUANTIDADE
+   ========================================================= */
+
+.cartItemActions {
+  width: 100%;
+
+  margin-top: auto;
+  padding-top: 15px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+
+/* QUANTIDADE */
+
+.cartQuantity {
+  display: flex;
+  align-items: center;
+
+  border: 1px solid #aaa;
+}
+
+.cartQuantity button {
+  width: 30px;
+  height: 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 15px;
+}
+
+.cartQuantity span {
+  min-width: 28px;
+
+  text-align: center;
+
+  font-size: 10px;
+}
+
+
+/* REMOVER */
+
+.cartRemove {
+  padding-bottom: 2px;
+
+  font-size: 8px;
+  letter-spacing: 1px;
+
+  border-bottom: 1px solid #111;
+}
+
+
+/* =========================================================
+   QUICK ADD - PÁGINAS DE CATEGORIA
+   =========================================================
+   Painel exibido quando o cliente clica no botão "+"
+   de um produto nas páginas:
+   CAMISETAS, CALÇAS, SHORTS, BONÉS etc.
+   ========================================================= */
+
+   .storeQuickPanel {
+    margin-top: 12px;
+    padding: 18px;
+  
+    background: #f2f0e9;
+    border: 1px solid #111;
+  }
+  
+  
+  /* =========================================================
+     TÍTULOS DO QUICK ADD
+     ========================================================= */
+  
+  .storeQuickPanel > span {
+    display: block;
+  
+    margin-bottom: 10px;
+  
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+  }
+  
+  
+  /* =========================================================
+     SELEÇÃO DE COR
+     ========================================================= */
+  
+  .storeQuickColors {
+    display: grid;
+  
+    grid-template-columns: repeat(2, 1fr);
+  
+    gap: 5px;
+  
+    margin-bottom: 18px;
+  }
+  
+  
+  .storeQuickColors button {
+    height: 40px;
+  
+    border: 1px solid #aaa;
+  
+    font-size: 9px;
+    letter-spacing: 1px;
+  
+    transition:
+      background 0.2s ease,
+      color 0.2s ease,
+      border-color 0.2s ease;
+  }
+  
+  
+  /* Cor atualmente selecionada */
+  
+  .storeQuickColors button.active {
+    background: #111;
+    color: #f2f0e9;
+  
+    border-color: #111;
+  }
+  
+  
+  /* =========================================================
+     SELEÇÃO DE TAMANHO
+     ========================================================= */
+  
+  .storeQuickSizes {
+    display: grid;
+  
+    grid-template-columns: repeat(4, 1fr);
+  
+    gap: 5px;
+  }
+  
+  
+  .storeQuickSizes button {
+    height: 40px;
+  
+    border: 1px solid #aaa;
+  
+    font-size: 10px;
+    font-weight: 700;
+  
+    transition:
+      background 0.2s ease,
+      color 0.2s ease,
+      border-color 0.2s ease;
+  }
+  
+  
+  /* Efeito ao passar o mouse sobre o tamanho */
+  
+  .storeQuickSizes button:hover {
+    background: #111;
+    color: #f2f0e9;
+  
+    border-color: #111;
+  }
+  
+  
+  /* =========================================================
+     HOVER DAS CORES
+     ========================================================= */
+  
+  .storeQuickColors button:hover {
+    border-color: #111;
+  }
+
+
+
+  /* =========================================================
+   LINK DA IMAGEM DO PRODUTO
+   =========================================================
+   Faz o link ocupar toda a área disponível da imagem.
+   ========================================================= */
+
+.storeProductImageLink {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.storeProductImageLink img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+
+
+/* =========================================================
+   LINK DO NOME DO PRODUTO
+   =========================================================
+   Mantém o visual atual do nome, mas permite acessar
+   a página individual clicando sobre ele.
+   ========================================================= */
+
+   .storeProductNameLink {
+    color: inherit;
+    text-decoration: none;
+  }
+  
+  
+  /* =========================================================
+     EFEITO AO PASSAR O MOUSE
+     =========================================================
+     Pequena alteração de opacidade para indicar que
+     o nome pode ser clicado.
+     ========================================================= */
+  
+  .storeProductNameLink h2 {
+    transition: opacity 0.2s ease;
+  }
+  
+  .storeProductNameLink:hover h2 {
+    opacity: 0.55;
+  }
+
+
+
+  /* =========================================================
+   NOTIFICAÇÃO - PRODUTO ADICIONADO À SACOLA
+   =========================================================
+   Pequena confirmação exibida após uma compra rápida.
+   Fica fixa no canto inferior direito da tela.
+   ========================================================= */
+
+.cartNotification {
+  position: fixed;
+
+  right: 25px;
+  bottom: 25px;
+
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+
+  min-width: 320px;
+
+  padding: 18px 22px;
+
+  background: #111;
+  color: #f2f0e9;
+
+  border: 1px solid #111;
+
+  animation: cartNotificationIn 0.3s ease;
+}
+
+
+/* =========================================================
+   ÍCONE DE CONFIRMAÇÃO
+   ========================================================= */
+
+.cartNotificationIcon {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   TÍTULO DA NOTIFICAÇÃO
+   ========================================================= */
+
+.cartNotification strong {
+  display: block;
+
+  margin-bottom: 5px;
+
+  font-size: 9px;
+  letter-spacing: 1.2px;
+}
+
+
+/* =========================================================
+   PRODUTO / COR / TAMANHO
+   ========================================================= */
+
+.cartNotification p {
+  margin: 0;
+
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+
+/* =========================================================
+   ANIMAÇÃO DE ENTRADA
+   ========================================================= */
+
+@keyframes cartNotificationIn {
+
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+}
+
+
+/* =========================================================
+   NOTIFICAÇÃO - MOBILE
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+  .cartNotification {
+    left: 15px;
+    right: 15px;
+    bottom: 15px;
+
+    min-width: 0;
+
+    width: auto;
+  }
+
+}
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   GUIA DE MEDIDAS - FUNDO
+   ========================================================= */
+
+   .sizeGuideOverlay {
+    position: fixed;
+    inset: 0;
+  
+    background: rgba(0, 0, 0, 0.55);
+  
+    display: flex;
+    justify-content: flex-end;
+  
+    z-index: 10000;
+  }
+  
+  
+  /* =========================================================
+     GUIA DE MEDIDAS - JANELA
+     ========================================================= */
+  
+  .sizeGuideModal {
+    width: min(620px, 100%);
+    height: 100%;
+  
+    background: #f2f0e9;
+    color: #111;
+  
+    padding: 40px;
+  
+    overflow-y: auto;
+  
+    animation: sizeGuideOpen 0.3s ease;
+  }
+  
+  
+  /* =========================================================
+     CABEÇALHO
+     ========================================================= */
+  
+  .sizeGuideHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  
+    gap: 30px;
+  
+    padding-bottom: 30px;
+  
+    border-bottom: 1px solid #111;
+  }
+  
+  
+  .sizeGuideHeader span {
+    display: block;
+  
+    margin-bottom: 12px;
+  
+    font-size: 9px;
+    font-weight: 700;
+  
+    letter-spacing: 1.5px;
+  }
+  
+  
+  .sizeGuideHeader h2 {
+    margin: 0;
+  
+    font-size: 34px;
+    line-height: 0.95;
+  
+    letter-spacing: -1.5px;
+  }
+  
+  
+  /* =========================================================
+     BOTÃO FECHAR
+     ========================================================= */
+  
+  .sizeGuideClose {
+    flex-shrink: 0;
+  
+    width: 42px;
+    height: 42px;
+  
+    border: 1px solid #111;
+  
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  
+    font-size: 24px;
+    line-height: 1;
+  
+    transition:
+      background 0.2s ease,
+      color 0.2s ease;
+  }
+  
+  
+  .sizeGuideClose:hover {
+    background: #111;
+    color: #f2f0e9;
+  }
+  
+  
+  /* =========================================================
+     TEXTO DE ORIENTAÇÃO
+     ========================================================= */
+  
+  .sizeGuideDescription {
+    max-width: 430px;
+  
+    margin: 35px 0;
+  
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  
+  
+  /* =========================================================
+     TABELA
+     ========================================================= */
+  
+  .sizeGuideTableWrapper {
+    width: 100%;
+  
+    overflow-x: auto;
+  }
+  
+  
+  .sizeGuideTable {
+    width: 100%;
+  
+    border-collapse: collapse;
+  }
+  
+  
+  .sizeGuideTable th,
+  .sizeGuideTable td {
+    padding: 18px 10px;
+  
+    border-bottom: 1px solid #aaa;
+  
+    text-align: left;
+  
+    font-size: 10px;
+  }
+  
+  
+  .sizeGuideTable th {
+    font-size: 8px;
+  
+    letter-spacing: 1px;
+  }
+  
+  
+  .sizeGuideTable td:first-child {
+    font-weight: 700;
+  }
+  
+  
+  /* =========================================================
+     OBSERVAÇÃO
+     ========================================================= */
+  
+  .sizeGuideNote {
+    margin-top: 30px;
+  
+    font-size: 9px;
+    line-height: 1.5;
+  
+    opacity: 0.6;
+  }
+  
+  
+  /* =========================================================
+     ANIMAÇÃO DE ABERTURA
+     ========================================================= */
+  
+  @keyframes sizeGuideOpen {
+  
+    from {
+      transform: translateX(100%);
+    }
+  
+    to {
+      transform: translateX(0);
+    }
+  
+  }
+  
+  
+  /* =========================================================
+     GUIA DE MEDIDAS - MOBILE
+     ========================================================= */
+  
+  @media (max-width: 768px) {
+  
+    .sizeGuideModal {
+      width: 100%;
+  
+      padding: 25px 20px;
+    }
+  
+  
+    .sizeGuideHeader h2 {
+      font-size: 27px;
+    }
+  
+  
+    .sizeGuideTable th,
+    .sizeGuideTable td {
+      padding: 15px 8px;
+  
+      font-size: 9px;
+    }
+  
+  }

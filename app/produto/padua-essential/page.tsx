@@ -10,21 +10,16 @@ import Link from "next/link";
 import StoreHeader from "../../componentes/loja/StoreHeader";
 import StoreFooter from "../../componentes/loja/StoreFooter";
 import { useCart } from "../../context/CartContext";
-/* =========================================================
-   COMPONENTE - GUIA DE MEDIDAS
-   ========================================================= */
-
-import SizeGuide from "../../componentes/loja/SizeGuide";
 
 import "../../componentes/loja/store.css";
 import "../produto.css";
 
 
 /* =========================================================
-   PÁGINA DO PRODUTO - PÁDUA GLOBE
+   PÁGINA DO PRODUTO - PÁDUA ESSENTIAL
    ========================================================= */
 
-export default function PaduaGlobePage() {
+export default function PaduaEssentialPage() {
 
   /* =======================================================
      ESTADOS DO PRODUTO
@@ -51,14 +46,6 @@ export default function PaduaGlobePage() {
 
   const [cartMessage, setCartMessage] = useState<string | null>(null);
 
-  /* =========================================================
-   GUIA DE MEDIDAS
-   =========================================================
-   false = guia fechado
-   true  = guia aberto
-   ========================================================= */
-
-  const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
 
   /* =======================================================
      CONTEXTO DA SACOLA
@@ -104,14 +91,14 @@ export default function PaduaGlobePage() {
        produto + cor + tamanho
 
        Exemplo:
-       padua-globe-PRETO-G
+       padua-essential-PRETO-G
        ===================================================== */
 
     addItem({
-      id: `padua-globe-${selectedColor}-${selectedSize}`,
-      name: "Pádua Globe",
-      price: 149.90,
-      image: "/site_padua/images/globe.jpg",
+      id: `padua-essential-${selectedColor}-${selectedSize}`,
+      name: "Pádua Essential",
+      price: 129.90,
+      image: "/site_padua/images/essential.jpg",
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
@@ -122,11 +109,11 @@ export default function PaduaGlobePage() {
        NOTIFICAÇÃO DE CONFIRMAÇÃO
        =====================================================
        Exemplo:
-       Pádua Globe — PRETO / G
+       Pádua Essential — PRETO / G
        ===================================================== */
 
     setCartMessage(
-      `Pádua Globe — ${selectedColor} / ${selectedSize}`
+      `Pádua Essential — ${selectedColor} / ${selectedSize}`
     );
 
 
@@ -177,7 +164,7 @@ export default function PaduaGlobePage() {
           <span>/</span>
 
           <strong>
-            PÁDUA GLOBE
+            PÁDUA ESSENTIAL
           </strong>
 
         </div>
@@ -201,8 +188,8 @@ export default function PaduaGlobePage() {
             <div className="productPhoto">
 
               <img
-                src="/site_padua/images/globe.jpg"
-                alt="Camiseta Pádua Globe"
+                src="/site_padua/images/essential.jpg"
+                alt="Camiseta Pádua Essential"
               />
 
             </div>
@@ -213,8 +200,8 @@ export default function PaduaGlobePage() {
             <div className="productPhoto">
 
               <img
-                src="/site_padua/images/globe-costas.jpg"
-                alt="Costas da camiseta Pádua Globe"
+                src="/site_padua/images/essential-costas.jpg"
+                alt="Costas da camiseta Pádua Essential"
               />
 
             </div>
@@ -240,11 +227,11 @@ export default function PaduaGlobePage() {
               </p>
 
               <h1>
-                PÁDUA GLOBE
+                PÁDUA ESSENTIAL
               </h1>
 
               <p className="productPrice">
-                R$ 149,90
+                R$ 129,90
               </p>
 
             </div>
@@ -327,21 +314,12 @@ export default function PaduaGlobePage() {
                   TAMANHO
                 </span>
 
-
                 {/* Futuramente podemos fazer este botão
                     abrir o Guia de Medidas */}
-
-                {/* =====================================================
-                    BOTÃO - GUIA DE MEDIDAS
-                    =====================================================
-                    Ao clicar, altera sizeGuideOpen para true e abre
-                    o componente do Guia de Medidas.
-                    ===================================================== */}
 
                 <button
                   type="button"
                   className="sizeGuide"
-                  onClick={() => setSizeGuideOpen(true)}
                 >
                   GUIA DE MEDIDAS
                 </button>
@@ -416,10 +394,10 @@ export default function PaduaGlobePage() {
                 </span>
 
                 <p>
-                  Camiseta Pádua Globe em modelagem
-                  oversized. Uma peça desenvolvida para
-                  representar movimento, identidade e
-                  cultura.
+                  Camiseta Pádua Essential em modelagem
+                  oversized. Uma peça essencial da Pádua,
+                  desenvolvida para compor diferentes
+                  combinações com identidade e simplicidade.
                 </p>
 
               </div>
@@ -487,7 +465,7 @@ export default function PaduaGlobePage() {
           Exemplo:
 
           ✓ PRODUTO ADICIONADO À SACOLA
-            Pádua Globe — PRETO / G
+            Pádua Essential — PRETO / G
 
           Depois de 3 segundos ela desaparece.
           ===================================================== */}
@@ -524,21 +502,6 @@ export default function PaduaGlobePage() {
         </div>
 
       )}
-
-      {/* =====================================================
-          GUIA DE MEDIDAS
-          =====================================================
-          isOpen controla se o guia aparece.
-
-          onClose é chamado pelo X ou quando o cliente
-          clica fora da janela.
-          ===================================================== */}
-
-      <SizeGuide
-        isOpen={sizeGuideOpen}
-        onClose={() => setSizeGuideOpen(false)}
-      />
-
 
 
       {/* =====================================================

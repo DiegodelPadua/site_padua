@@ -56,12 +56,16 @@
    GALERIA
    ========================================================= */
 
-.productGallery {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-
-  gap: 2px;
-}
+   .productGallery {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  
+    gap: 24px;
+  
+    padding: 24px;
+  
+    background: #f2f0e9;
+  }
 
 .productPhoto {
   width: 100%;

@@ -8,7 +8,11 @@
    sem precisar recarregar toda a aplicação.
    ========================================================= */
 
+import { useState } from "react";
+import { useCart } from "./context/CartContext";
+import CartDrawer from "./componentes/loja/CartDrawer";   
 import Link from "next/link";
+
 
 
 /* =========================================================
@@ -54,6 +58,72 @@ const products = [
    ========================================================= */
 
 export default function Home() {
+
+  const { cartCount, addItem } = useCart();
+  const [cartOpen, setCartOpen] = useState(false);
+  function handleQuickAdd(
+    product: (typeof products)[number],
+    size: string,
+    color: string
+  ) {
+    const price = Number(
+      product.price
+        .replace("R$", "")
+        .replace(".", "")
+        .replace(",", ".")
+        .trim()
+    );
+  
+    addItem({
+      id: `${product.slug}-${color}-${size}`,
+      name: product.name,
+      price: price,
+      image: product.image,
+      size: size,
+      color: color,
+      quantity: 1,
+    });
+
+    /* =======================================================
+        EXIBE A CONFIRMAÇÃO PARA O CLIENTE
+        =======================================================
+        Exemplo:
+        Pádua Globe — PRETO / G
+        ======================================================= */
+
+      setCartMessage(
+        `${product.name} — ${color} / ${size}`
+      );
+
+
+      /* Fecha o painel de compra rápida */
+
+      setQuickAddOpen(null);
+
+
+      /* =======================================================
+        REMOVE A NOTIFICAÇÃO APÓS 3 SEGUNDOS
+        ======================================================= */
+
+      setTimeout(() => {
+        setCartMessage(null);
+      }, 3000);
+    
+      setQuickAddOpen(null);
+      setCartOpen(true);
+    }
+
+  const [quickAddOpen, setQuickAddOpen] = useState<string | null>(null);
+  const [quickColor, setQuickColor] = useState("OFF-WHITE");
+
+  /* =========================================================
+   NOTIFICAÇÃO - PRODUTO ADICIONADO
+   =========================================================
+   Guarda a mensagem exibida quando um produto é
+   adicionado à sacola através do botão "+".
+   ========================================================= */
+
+  const [cartMessage, setCartMessage] = useState<string | null>(null);
 
   return (
 
@@ -132,9 +202,12 @@ export default function Home() {
 
           {/* SACOLA */}
 
-          <button>
-            SACOLA (0)
-          </button>
+        <button
+          type="button"
+          onClick={() => setCartOpen(true)}
+        >
+          SACOLA ({cartCount})
+        </button>
 
 
         </div>
@@ -249,67 +322,117 @@ export default function Home() {
 
             <article
               className="productCard"
-              key={product.name}
+              key={product.slug}
             >
 
+              {/* LINK PARA A PÁGINA DO PRODUTO */}
 
-              {/* =============================================
-                  IMAGEM DO PRODUTO
-                  ============================================= */}
-
-              <div className="productImage">
-
-                <img
-                  src={product.image}
-                  alt={product.name}
-                />
-
-
-                {/* BOTÃO DE ADIÇÃO RÁPIDA */}
-
-                <button className="quickAdd">
-                  +
-                </button>
-
-              </div>
+              <Link
+                href={`/produto/${product.slug}`}
+                className="productCardLink"
+              >
 
 
 
-              {/* =============================================
-                  INFORMAÇÕES DO PRODUTO
-                  ============================================= */}
 
-              <div className="productInfo">
+                {/* IMAGEM DO PRODUTO */}
 
-                <div>
+                <div className="productImage">
 
-                  {/* NOME */}
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                  />
 
-                  <h3>
-                    {product.name}
-                  </h3>
+                  <button
+                    type="button"
+                    className="quickAdd"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
 
-
-                  {/* CATEGORIA */}
-
-                  <p>
-                    {product.category}
-                  </p>
+                      setQuickAddOpen(
+                        quickAddOpen === product.slug
+                          ? null
+                          : product.slug
+                      );
+                    }}
+                  >
+                    {quickAddOpen === product.slug ? "×" : "+"}
+                  </button>
 
                 </div>
 
 
-                {/* PREÇO */}
+                {/* INFORMAÇÕES DO PRODUTO */}
 
-                <strong>
-                  {product.price}
-                </strong>
+                <div className="productInfo">
 
-              </div>
+                  <div>
+
+                    <h3>
+                      {product.name}
+                    </h3>
+
+                    <p>
+                      {product.category}
+                    </p>
+
+                  </div>
+
+
+                  <strong>
+                    {product.price}
+                  </strong>
+
+                </div>
+
+              </Link>
+
+              {quickAddOpen === product.slug && (
+                <div className="quickAddPanel">
+
+                  <span>SELECIONE A COR</span>
+
+                  <div className="quickColors">
+                    {["OFF-WHITE", "PRETO"].map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={quickColor === color ? "active" : ""}
+                        onClick={() => setQuickColor(color)}
+                      >
+                        {color}
+                      </button>
+                    ))}
+                  </div>
+
+                  <span className="quickSizeTitle">
+                    SELECIONE O TAMANHO
+                  </span>
+
+                  <div className="quickSizes">
+                    {["P", "M", "G", "GG"].map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() =>
+                          handleQuickAdd(product, size, quickColor)
+                        }
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+
+                </div>
+              )}
 
             </article>
 
           ))}
+
+
 
         </div>
 
@@ -636,7 +759,49 @@ export default function Home() {
         </div>
 
       </footer>
+      {/* =====================================================
+          NOTIFICAÇÃO - PRODUTO ADICIONADO À SACOLA
+          =====================================================
+          Aparece durante 3 segundos após utilizar o botão "+".
+          ===================================================== */}
 
+      {cartMessage && (
+
+      <div
+        className="cartNotification"
+        role="status"
+        aria-live="polite"
+      >
+
+        {/* Ícone de confirmação */}
+
+        <span className="cartNotificationIcon">
+          ✓
+        </span>
+
+
+        {/* Informações do produto adicionado */}
+
+        <div>
+
+          <strong>
+            PRODUTO ADICIONADO À SACOLA
+          </strong>
+
+          <p>
+            {cartMessage}
+          </p>
+
+        </div>
+
+      </div>
+
+      )}
+
+      <CartDrawer
+      isOpen={cartOpen}
+      onClose={() => setCartOpen(false)}
+      />
 
     </main>
   );

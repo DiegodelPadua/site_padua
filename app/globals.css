@@ -159,6 +159,9 @@ button {
   grid-template-columns: repeat(3, 1fr);
   gap: 15px;
 }
+.productCard {
+  position: relative;
+}
 
 .productImage {
   height: 600px;
@@ -509,6 +512,7 @@ button {
 
   .productCard {
     width: 100%;
+    position: relative;
   }
 
   .productImage {
@@ -1073,3 +1077,208 @@ button {
 }
 
 
+
+
+
+
+/* =========================================================
+   ADIÇÃO RÁPIDA - PRODUTOS HOME
+   ========================================================= */
+
+   .quickAddPanel {
+    position: absolute;
+  
+    left: 15px;
+    right: 15px;
+    bottom: 15px;
+  
+    padding: 18px;
+  
+    background: #f2f0e9;
+  
+    border: 1px solid #111;
+  
+    z-index: 10;
+  }
+  
+  .quickAddPanel > span {
+    display: block;
+  
+    margin-bottom: 12px;
+  
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+  }
+  
+  .quickSizes {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  
+    gap: 5px;
+  }
+  
+  .quickSizes button {
+    height: 40px;
+  
+    border: 1px solid #aaa;
+  
+    font-size: 10px;
+  
+    transition:
+      background 0.2s ease,
+      color 0.2s ease,
+      border 0.2s ease;
+  }
+  
+  .quickSizes button:hover {
+    background: #111;
+    color: #f2f0e9;
+  
+    border-color: #111;
+  }
+
+
+
+  /* =========================================================
+cards de cores para os produtos na página inicial
+   ========================================================= */
+
+
+  .quickColors {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+    margin-bottom: 18px;
+  }
+  
+  .quickColors button {
+    height: 40px;
+    border: 1px solid #aaa;
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  
+  .quickColors button.active {
+    background: #111;
+    color: #f2f0e9;
+    border-color: #111;
+  }
+  
+  .quickSizeTitle {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+  }
+
+
+
+
+
+  /* =========================================================
+   NOTIFICAÇÃO - PRODUTO ADICIONADO À SACOLA
+   =========================================================
+   Pequena confirmação exibida após uma compra rápida.
+   Fica fixa no canto inferior direito da tela.
+   ========================================================= */
+
+.cartNotification {
+  position: fixed;
+
+  right: 25px;
+  bottom: 25px;
+
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+
+  min-width: 320px;
+
+  padding: 18px 22px;
+
+  background: #111;
+  color: #f2f0e9;
+
+  border: 1px solid #111;
+
+  animation: cartNotificationIn 0.3s ease;
+}
+
+
+/* =========================================================
+   ÍCONE DE CONFIRMAÇÃO
+   ========================================================= */
+
+.cartNotificationIcon {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   TÍTULO DA NOTIFICAÇÃO
+   ========================================================= */
+
+.cartNotification strong {
+  display: block;
+
+  margin-bottom: 5px;
+
+  font-size: 9px;
+  letter-spacing: 1.2px;
+}
+
+
+/* =========================================================
+   PRODUTO / COR / TAMANHO
+   ========================================================= */
+
+.cartNotification p {
+  margin: 0;
+
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+
+/* =========================================================
+   ANIMAÇÃO DE ENTRADA
+   ========================================================= */
+
+@keyframes cartNotificationIn {
+
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+}
+
+
+/* =========================================================
+   NOTIFICAÇÃO - MOBILE
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+  .cartNotification {
+    left: 15px;
+    right: 15px;
+    bottom: 15px;
+
+    min-width: 0;
+
+    width: auto;
+  }
+
+}
