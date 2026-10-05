@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCart } from "../../context/CartContext";
 
 type CartDrawerProps = {
@@ -11,6 +12,15 @@ export default function CartDrawer({
   isOpen,
   onClose,
 }: CartDrawerProps) {
+  
+    /* =========================================================
+     NAVEGAÇÃO
+     =========================================================
+     Utilizado para levar o cliente da sacola para a página
+     de finalização da compra.
+     ========================================================= */
+
+  const router = useRouter();
 
   const {
     items,
@@ -196,13 +206,23 @@ export default function CartDrawer({
               FRETE CALCULADO NA FINALIZAÇÃO DA COMPRA.
             </p>
 
-            <button
-              type="button"
-              className="cartCheckout"
-            >
-              <span>FINALIZAR COMPRA</span>
-              <span>→</span>
-            </button>
+            {/* =========================================================
+                FINALIZAR COMPRA
+                =========================================================
+                Fecha a sacola e direciona o cliente para o checkout.
+                ========================================================= */}
+
+                <button
+                  type="button"
+                  className="cartCheckout"
+                  onClick={() => {
+                    onClose();
+                    router.push("/checkout");
+                  }}
+                >
+                  <span>FINALIZAR COMPRA</span>
+                  <span>→</span>
+                </button>
 
           </div>
 

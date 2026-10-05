@@ -840,10 +840,26 @@
     }
   
   
-    .storeFooterLogo {
+   /* =========================================================
+   LOGO DO RODAPÉ - MOBILE
+   =========================================================
+   Mantém PÁDUA completamente dentro da tela.
+   ========================================================= */
+
+.storeFooterLogo {
+      width: 100%;
+
+      font-size: 22vw;
+      line-height: 0.95;
+
+      letter-spacing: -5px;
+
+      white-space: nowrap;
+      overflow: visible;
+    } .storeFooterLogo {
       font-size: 27vw;
   
-      letter-spacing: -7px;
+      letter-spacing: -9px;
     }
   
   

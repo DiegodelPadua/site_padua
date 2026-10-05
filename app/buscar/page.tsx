@@ -12,33 +12,37 @@ import "./buscar.css";
 /* =========================================================
    PRODUTOS
    =========================================================
-   Dados temporários dos produtos.
+   Dados temporários utilizados pela busca.
+
+   O slug identifica a página individual de cada produto.
 
    FUTURAMENTE:
-   Estes produtos poderão vir do banco de dados.
+   Estes dados serão carregados diretamente do banco.
    ========================================================= */
 
 const products = [
   {
     name: "Pádua Globe",
+    slug: "padua-globe",
     category: "Camiseta",
     price: "R$ 149,90",
-    image: "/images/globe.jpg",
+    image: "/site_padua/images/globe.jpg",
   },
   {
     name: "Pádua 1980",
+    slug: "padua-1980",
     category: "Camiseta",
     price: "R$ 159,90",
-    image: "/images/1980.jpg",
+    image: "/site_padua/images/1980.jpg",
   },
   {
     name: "Pádua Essential",
+    slug: "padua-essential",
     category: "Camiseta",
     price: "R$ 129,90",
-    image: "/images/essential.jpg",
+    image: "/site_padua/images/essential.jpg",
   },
 ];
-
 
 /* =========================================================
    CATEGORIAS / SUGESTÕES DE BUSCA
@@ -341,13 +345,22 @@ export default function Buscar() {
 
                 {filteredProducts.map((product) => (
 
-                  <article
+                  /* =====================================================
+                    PRODUTO ENCONTRADO
+                    =====================================================
+                    Todo o card pode ser clicado para abrir a página
+                    individual do produto.
+                    ===================================================== */
+
+                  <Link
+                    href={`/produto/${product.slug}`}
                     className="searchProduct"
-                    key={product.name}
+                    key={product.slug}
                   >
 
-
-                    {/* IMAGEM DO PRODUTO */}
+                    {/* ===================================================
+                        IMAGEM DO PRODUTO
+                        =================================================== */}
 
                     <div className="searchProductImage">
 
@@ -359,20 +372,17 @@ export default function Buscar() {
                     </div>
 
 
-                    {/* INFORMAÇÕES DO PRODUTO */}
+                    {/* ===================================================
+                        INFORMAÇÕES DO PRODUTO
+                        =================================================== */}
 
                     <div className="searchProductInfo">
 
                       <div>
 
-                        {/* Nome */}
-
                         <h3>
                           {product.name}
                         </h3>
-
-
-                        {/* Categoria */}
 
                         <p>
                           {product.category}
@@ -381,7 +391,7 @@ export default function Buscar() {
                       </div>
 
 
-                      {/* Preço */}
+                      {/* PREÇO */}
 
                       <strong>
                         {product.price}
@@ -389,7 +399,7 @@ export default function Buscar() {
 
                     </div>
 
-                  </article>
+                  </Link>
 
                 ))}
 

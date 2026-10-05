@@ -10,6 +10,11 @@ import Link from "next/link";
 import StoreHeader from "../../componentes/loja/StoreHeader";
 import StoreFooter from "../../componentes/loja/StoreFooter";
 import { useCart } from "../../context/CartContext";
+/* =========================================================
+   COMPONENTE - GUIA DE MEDIDAS
+   ========================================================= */
+
+import SizeGuide from "../../componentes/loja/SizeGuide";
 
 import "../../componentes/loja/store.css";
 import "../produto.css";
@@ -20,6 +25,15 @@ import "../produto.css";
    ========================================================= */
 
 export default function Padua1980Page() {
+
+  /* =========================================================
+   GUIA DE MEDIDAS
+   =========================================================
+   false = fechado
+   true  = aberto
+   ========================================================= */
+
+  const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
 
   /* =======================================================
      ESTADOS DO PRODUTO
@@ -318,9 +332,14 @@ export default function Padua1980Page() {
                 {/* Futuramente este botão poderá abrir
                     o Guia de Medidas */}
 
+                {/* =====================================================
+                    BOTÃO - GUIA DE MEDIDAS
+                    ===================================================== */}
+
                 <button
                   type="button"
                   className="sizeGuide"
+                  onClick={() => setSizeGuideOpen(true)}
                 >
                   GUIA DE MEDIDAS
                 </button>
@@ -503,6 +522,15 @@ export default function Padua1980Page() {
         </div>
 
       )}
+
+      {/* =====================================================
+          GUIA DE MEDIDAS
+          ===================================================== */}
+
+      <SizeGuide
+        isOpen={sizeGuideOpen}
+        onClose={() => setSizeGuideOpen(false)}
+      />
 
 
       {/* =====================================================

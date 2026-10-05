@@ -287,11 +287,21 @@
   }
   
   
-  /* CARD DO PRODUTO */
-  
-  .searchProduct {
-    min-width: 0;
-  }
+/* =========================================================
+   CARD DO PRODUTO
+   =========================================================
+   O card é um Link para a página individual do produto.
+   Por isso removemos a aparência padrão dos links.
+   ========================================================= */
+
+.searchProduct {
+  min-width: 0;
+
+  display: block;
+
+  color: #111;
+  text-decoration: none;
+}
   
   
   /* =========================================================
@@ -572,8 +582,55 @@
   
     /* UM PRODUTO POR LINHA */
   
-    .searchProducts {
-      grid-template-columns: 1fr;
+ .searchProducts {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
     }
   
   }
+
+  /* =========================================================
+   PRODUTOS - CELULAR
+   ========================================================= */
+
+.searchProductInfo {
+  padding-top: 10px;
+}
+
+
+.searchProductInfo h3 {
+  font-size: 11px;
+}
+
+
+.searchProductInfo p {
+  font-size: 9px;
+}
+
+
+.searchProductInfo strong {
+  margin-top: 6px;
+
+  font-size: 10px;
+}
+
+/* =========================================================
+   LOGO DO RODAPÉ - MOBILE
+   =========================================================
+   Reduz o tamanho do nome PÁDUA para que ele permaneça
+   completamente dentro da largura da tela.
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+  .storeFooterLogo {
+    font-size: 22vw;
+
+    line-height: 0.85;
+
+    letter-spacing: -3px;
+
+    white-space: nowrap;
+  }
+
+}
