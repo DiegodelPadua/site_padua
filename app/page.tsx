@@ -12,6 +12,14 @@ import { useState } from "react";
 import { useCart } from "./context/CartContext";
 import CartDrawer from "./componentes/loja/CartDrawer";   
 import Link from "next/link";
+/* =========================================================
+   ESTILOS DOS COMPONENTES DA LOJA
+   =========================================================
+   Necessário para que componentes compartilhados, como
+   a Sacola, recebam seus estilos também na página inicial.
+   ========================================================= */
+
+import "./componentes/loja/store.css";
 
 
 
