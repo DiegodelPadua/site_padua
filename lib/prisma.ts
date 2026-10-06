@@ -3,8 +3,15 @@
    =========================================================
    Centraliza a conexão da aplicação com o banco MySQL.
 
-   Prisma 7 utiliza um Driver Adapter para realizar
-   a conexão da aplicação com o banco.
+   LOCAL:
+   utiliza DATABASE_URL definida no arquivo .env.
+
+   BUILD:
+   quando DATABASE_URL não estiver disponível, utiliza
+   valores temporários apenas para permitir a compilação.
+
+   IMPORTANTE:
+   nenhuma senha real fica salva neste arquivo.
    ========================================================= */
 
 import { PrismaClient } from "@prisma/client";
@@ -12,21 +19,12 @@ import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
 
 /* =========================================================
-   VARIÁVEIS DE CONEXÃO
-   =========================================================
-   A DATABASE_URL continua protegida no arquivo .env.
-
-   Aqui extraímos os dados da URL para configurar
-   o adapter do MySQL/MariaDB.
+   URL DO BANCO
    ========================================================= */
 
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-  throw new Error(
-    "DATABASE_URL não foi encontrada no arquivo .env."
-  );
-}
+const databaseUrl =
+  process.env.DATABASE_URL ??
+  "mysql://root:placeholder@localhost:3306/db_padua";
 
 const url = new URL(databaseUrl);
 
@@ -59,10 +57,8 @@ const adapter = new PrismaMariaDb({
 /* =========================================================
    GLOBAL PRISMA
    =========================================================
-   Durante o desenvolvimento, o Next.js utiliza Hot Reload.
-
-   Guardamos o Prisma globalmente para evitar a criação
-   desnecessária de vários PrismaClient.
+   Evita criar várias instâncias do Prisma durante
+   o Hot Reload do Next.js em desenvolvimento.
    ========================================================= */
 
 const globalForPrisma = globalThis as unknown as {
