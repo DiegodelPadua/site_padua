@@ -1,0 +1,64 @@
+// =========================================================
+// PRISMA - BANCO DE DADOS PÁDUA
+// =========================================================
+
+
+// =========================================================
+// PRISMA CLIENT
+// =========================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+// =========================================================
+// BANCO DE DADOS
+// =========================================================
+// A URL de conexão está configurada no prisma.config.ts.
+// =========================================================
+
+datasource db {
+  provider = "mysql"
+}
+
+
+// =========================================================
+// USUÁRIO
+// =========================================================
+// Representa clientes e administradores da Pádua.
+//
+// IMPORTANTE:
+// A senha do cliente nunca será salva diretamente.
+// senhaHash armazenará somente o hash da senha.
+// =========================================================
+
+model Usuario {
+
+  id Int @id @default(autoincrement())
+
+  nome      String
+  sobrenome String
+
+  email    String  @unique
+  telefone String?
+
+  senhaHash String
+
+  perfil Perfil @default(CLIENTE)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@map("usuarios")
+}
+
+
+// =========================================================
+// PERFIL DO USUÁRIO
+// =========================================================
+
+enum Perfil {
+  CLIENTE
+  ADMIN
+}

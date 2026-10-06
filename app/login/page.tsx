@@ -7,15 +7,96 @@ import "./login.css";
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+/* =========================================================
+   ENVIO DO FORMULÁRIO
+   ========================================================= */
 
-    if (mode === "login") {
-      alert("Login será conectado ao banco posteriormente.");
-    } else {
-      alert("Cadastro será conectado ao banco posteriormente.");
-    }
+const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+
+  /* =======================================================
+     LOGIN
+     =======================================================
+     Será conectado ao banco depois do cadastro.
+     ======================================================= */
+
+  if (mode === "login") {
+    alert("Login será conectado ao banco no próximo passo.");
+    return;
   }
+
+  /* =======================================================
+     DADOS DO FORMULÁRIO DE CADASTRO
+     ======================================================= */
+
+  const form = e.currentTarget;
+  const formData = new FormData(form);
+
+  const nome = formData.get("name")?.toString().trim() || "";
+  const sobrenome = formData.get("surname")?.toString().trim() || "";
+  const email = formData.get("email")?.toString().trim() || "";
+  const telefone = formData.get("phone")?.toString().trim() || "";
+  const senha = formData.get("password")?.toString() || "";
+  const confirmarSenha =
+    formData.get("confirmPassword")?.toString() || "";
+
+  /* =======================================================
+     CONFIRMAÇÃO DA SENHA
+     ======================================================= */
+
+  if (senha !== confirmarSenha) {
+    alert("As senhas não são iguais.");
+    return;
+  }
+
+  /* =======================================================
+     ENVIAR CADASTRO PARA A API
+     ======================================================= */
+
+  try {
+    const response = await fetch("/site_padua/api/auth/cadastro", {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        nome,
+        sobrenome,
+        email,
+        telefone,
+        senha,
+      }),
+    });
+
+    /* =====================================================
+       RESPOSTA DA API
+       ===================================================== */
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.erro || "Não foi possível criar sua conta.");
+      return;
+    }
+
+    /* =====================================================
+       CADASTRO REALIZADO
+       ===================================================== */
+
+    alert("Conta criada com sucesso!");
+
+    form.reset();
+
+    // Volta para a tela de login após criar a conta.
+    setMode("login");
+  } catch (error) {
+    console.error("Erro ao realizar cadastro:", error);
+
+    alert("Não foi possível conectar ao servidor.");
+  }
+};
 
   return (
     <main className="loginPage">
