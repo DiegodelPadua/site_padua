@@ -1,13 +1,9 @@
 /* =========================================================
-   ROTA DE CADASTRO - PÁDUA
+   ROTA DE LOGIN - PÁDUA
    =========================================================
    Endpoint:
 
-   POST /api/auth/cadastro
-
-   A Route não contém regras de negócio.
-
-   Ela apenas encaminha a requisição para o Controller.
+   POST /api/auth/login
 
    Fluxo:
 
@@ -25,16 +21,16 @@
    ========================================================= */
 
 import {
-  cadastrarUsuarioController,
+  loginController,
 } from "../../../../src/controllers/authController";
 
 
 /* =========================================================
-   POST /api/auth/cadastro
+   POST /api/auth/login
    ========================================================= */
 
 export async function POST(request: Request) {
 
-  return cadastrarUsuarioController(request);
+  return loginController(request);
 
 }
