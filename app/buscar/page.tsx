@@ -26,21 +26,21 @@ const products = [
     slug: "padua-globe",
     category: "Camiseta",
     price: "R$ 149,90",
-    image: "/site_padua/images/globe.jpg",
+    image: "/images/globe.jpg",
   },
   {
     name: "Pádua 1980",
     slug: "padua-1980",
     category: "Camiseta",
     price: "R$ 159,90",
-    image: "/site_padua/images/1980.jpg",
+    image: "/images/1980.jpg",
   },
   {
     name: "Pádua Essential",
     slug: "padua-essential",
     category: "Camiseta",
     price: "R$ 129,90",
-    image: "/site_padua/images/essential.jpg",
+    image: "/images/essential.jpg",
   },
 ];
 

@@ -41,8 +41,8 @@
   
       price: "R$ 149,90",
   
-      // Caminho da imagem considerando o basePath /site_padua
-      image: "/site_padua/images/globe.jpg",
+      // Caminho da imagem considerando o basePath 
+      image: "/images/globe.jpg",
     },
   
   
@@ -60,8 +60,8 @@
   
       price: "R$ 159,90",
   
-      // Caminho da imagem considerando o basePath /site_padua
-      image: "/site_padua/images/1980.jpg",
+      // Caminho da imagem considerando o basePath 
+      image: "/images/1980.jpg",
     },
   
   
@@ -79,8 +79,8 @@
   
       price: "R$ 129,90",
   
-      // Caminho da imagem considerando o basePath /site_padua
-      image: "/site_padua/images/essential.jpg",
+      // Caminho da imagem considerando o basePath 
+      image: "/images/essential.jpg",
     },
   
   ];

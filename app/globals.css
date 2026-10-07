@@ -87,7 +87,7 @@ button {
   min-height: calc(100vh - 82px);
   background:
     linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.35)),
-    url("/site_padua/images/hero.jpg") center/cover;
+    url("/images/hero.jpg") center/cover;
   display: flex;
   align-items: flex-end;
   padding: 5%;
@@ -427,7 +427,7 @@ button {
         rgba(0, 0, 0, 0.10),
         rgba(0, 0, 0, 0.45)
       ),
-      url("/site_padua/images/hero.jpg");
+      url("/images/hero.jpg");
 
     background-size: cover;
 

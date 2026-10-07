@@ -54,7 +54,7 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
      ======================================================= */
 
   try {
-    const response = await fetch("/site_padua/api/auth/cadastro", {
+    const response = await fetch("/api/auth/cadastro", {
       method: "POST",
 
       headers: {

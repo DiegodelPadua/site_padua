@@ -112,7 +112,7 @@ export default function PaduaEssentialPage() {
       id: `padua-essential-${selectedColor}-${selectedSize}`,
       name: "Pádua Essential",
       price: 129.90,
-      image: "/site_padua/images/essential.jpg",
+      image: "/images/essential.jpg",
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
@@ -202,7 +202,7 @@ export default function PaduaEssentialPage() {
             <div className="productPhoto">
 
               <img
-                src="/site_padua/images/essential.jpg"
+                src="/images/essential.jpg"
                 alt="Camiseta Pádua Essential"
               />
 
@@ -214,7 +214,7 @@ export default function PaduaEssentialPage() {
             <div className="productPhoto">
 
               <img
-                src="/site_padua/images/essential-costas.jpg"
+                src="/images/essential-costas.jpg"
                 alt="Costas da camiseta Pádua Essential"
               />
 

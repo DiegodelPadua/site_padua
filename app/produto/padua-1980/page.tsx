@@ -112,7 +112,7 @@ export default function Padua1980Page() {
       id: `padua-1980-${selectedColor}-${selectedSize}`,
       name: "Pádua 1980",
       price: 159.90,
-      image: "/site_padua/images/1980.jpg",
+      image: "/images/1980.jpg",
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
@@ -202,7 +202,7 @@ export default function Padua1980Page() {
             <div className="productPhoto">
 
               <img
-                src="/site_padua/images/1980.jpg"
+                src="/images/1980.jpg"
                 alt="Camiseta Pádua 1980"
               />
 
@@ -214,7 +214,7 @@ export default function Padua1980Page() {
             <div className="productPhoto">
 
               <img
-                src="/site_padua/images/1980-costas.jpg"
+                src="/images/1980-costas.jpg"
                 alt="Costas da camiseta Pádua 1980"
               />
 

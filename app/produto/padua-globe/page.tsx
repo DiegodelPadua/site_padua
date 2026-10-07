@@ -111,7 +111,7 @@ export default function PaduaGlobePage() {
       id: `padua-globe-${selectedColor}-${selectedSize}`,
       name: "Pádua Globe",
       price: 149.90,
-      image: "/site_padua/images/globe.jpg",
+      image: "/images/globe.jpg",
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
@@ -201,7 +201,7 @@ export default function PaduaGlobePage() {
             <div className="productPhoto">
 
               <img
-                src="/site_padua/images/globe.jpg"
+                src="/images/globe.jpg"
                 alt="Camiseta Pádua Globe"
               />
 
@@ -213,7 +213,7 @@ export default function PaduaGlobePage() {
             <div className="productPhoto">
 
               <img
-                src="/site_padua/images/globe-costas.jpg"
+                src="/images/globe-costas.jpg"
                 alt="Costas da camiseta Pádua Globe"
               />
 
