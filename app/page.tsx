@@ -7,8 +7,7 @@
    Link é utilizado para navegar entre as páginas do site
    sem precisar recarregar toda a aplicação.
    ========================================================= */
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCart } from "./context/CartContext";
 import CartDrawer from "./componentes/loja/CartDrawer";   
 import Link from "next/link";
@@ -69,6 +68,59 @@ export default function Home() {
 
   const { cartCount, addItem } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
+  
+/* =========================================================
+   AUTENTICAÇÃO DO CLIENTE - HOME PÁDUA
+   =========================================================
+   Consulta a sessão existente através da API /api/auth/me.
+   Não armazena senhas ou tokens no navegador.
+   ========================================================= */
+
+const [usuarioAutenticado, setUsuarioAutenticado] =
+  useState(false);
+
+const [verificandoSessao, setVerificandoSessao] =
+  useState(true);
+
+useEffect(() => {
+  const controller = new AbortController();
+
+  async function verificarSessao() {
+    try {
+      const response = await fetch("/api/auth/me", {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        setUsuarioAutenticado(false);
+        return;
+      }
+
+      const data = await response.json();
+
+      setUsuarioAutenticado(
+        data.autenticado === true && Boolean(data.usuario)
+      );
+    } catch (error) {
+      if (controller.signal.aborted) return;
+
+      console.error("Erro ao verificar sessão:", error);
+      setUsuarioAutenticado(false);
+    } finally {
+      if (!controller.signal.aborted) {
+        setVerificandoSessao(false);
+      }
+    }
+  }
+
+  verificarSessao();
+
+  return () => controller.abort();
+}, []);
+
   function handleQuickAdd(
     product: (typeof products)[number],
     size: string,
@@ -193,11 +245,18 @@ export default function Home() {
 
           {/* CONTA / LOGIN */}
 
+          {/* Direciona o cliente para a área da conta
+              ou para o login, conforme a sessão. */}
+
           <Link
-            href="/login"
+            href={usuarioAutenticado ? "/minha-conta" : "/login"}
             className="accountLink"
           >
-            CONTA
+            {verificandoSessao
+              ? "CONTA"
+              : usuarioAutenticado
+                ? "MINHA CONTA"
+                : "CONTA"}
           </Link>
 
 

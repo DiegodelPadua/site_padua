@@ -45,6 +45,17 @@ model Usuario {
 
   senhaHash String
 
+  // =========================================================
+  // CONTROLE DE VERSÃO DA SESSÃO
+  // =========================================================
+  // Cada JWT terá uma versão associada ao usuário.
+  //
+  // Quando a senha for alterada, incrementaremos essa
+  // versão para invalidar os tokens emitidos anteriormente.
+  // =========================================================
+
+  versaoSessao Int @default(1)
+
   perfil Perfil @default(CLIENTE)
 
   criadoEm     DateTime @default(now())
@@ -61,4 +72,105 @@ model Usuario {
 enum Perfil {
   CLIENTE
   ADMIN
+}
+
+
+ // =========================================================
+ // CATEGORIA DOS PRODUTOS
+ // =========================================================
+
+model Categoria {
+  id        Int       @id @default(autoincrement())
+  nome      String    @unique @db.VarChar(100)
+  slug      String    @unique @db.VarChar(120)
+  ativa     Boolean   @default(true)
+
+  produtos  Produto[]
+
+  criadoEm  DateTime  @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@map("categorias")
+}
+
+// =========================================================
+// PRODUTO
+// =========================================================
+
+model Produto {
+  id          Int       @id @default(autoincrement())
+  nome        String    @db.VarChar(150)
+  slug        String    @unique @db.VarChar(180)
+  descricao   String?   @db.Text
+
+  // Valores monetários devem utilizar Decimal.
+  preco       Decimal   @db.Decimal(10, 2)
+  precoPromocional Decimal? @db.Decimal(10, 2)
+
+  categoriaId Int
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+
+  ativo       Boolean   @default(false)
+  destaque    Boolean   @default(false)
+
+  variantes   VarianteProduto[]
+  imagens     ImagemProduto[]
+
+  criadoEm    DateTime  @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([categoriaId])
+  @@map("produtos")
+}
+
+// =========================================================
+// VARIANTES DOS PRODUTOS
+// =========================================================
+// Cada combinação de tamanho e cor possui estoque próprio.
+// Exemplo: Camiseta Globe / Preto / G / 5 unidades.
+// =========================================================
+
+model VarianteProduto {
+  id          Int      @id @default(autoincrement())
+
+  produtoId   Int
+  produto     Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  tamanho     String   @db.VarChar(30)
+  cor         String   @db.VarChar(60)
+
+  sku         String?  @unique @db.VarChar(100)
+  quantidade  Int      @default(0)
+  ativa       Boolean  @default(true)
+
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  // Impede variantes duplicadas do mesmo produto.
+  @@unique([produtoId, tamanho, cor])
+  @@map("variantes_produto")
+}
+
+// =========================================================
+// IMAGENS DOS PRODUTOS
+// =========================================================
+// Armazena o endereço da imagem, não o arquivo físico.
+// =========================================================
+
+model ImagemProduto {
+  id         Int      @id @default(autoincrement())
+
+  produtoId  Int
+  produto    Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  url        String   @db.VarChar(1000)
+  textoAlt   String?  @db.VarChar(255)
+
+  ordem      Int      @default(0)
+  principal  Boolean  @default(false)
+
+  criadoEm   DateTime @default(now())
+
+  @@index([produtoId, ordem])
+  @@map("imagens_produto")
 }
