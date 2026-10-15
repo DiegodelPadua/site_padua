@@ -20,10 +20,62 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
      Será conectado ao banco depois do cadastro.
      ======================================================= */
 
-  if (mode === "login") {
-    alert("Login será conectado ao banco no próximo passo.");
-    return;
+
+/* =========================================================
+   LOGIN DO CLIENTE - PÁDUA
+   =========================================================
+   Envia e-mail e senha para a API já existente.
+
+   O servidor valida as credenciais e cria o cookie
+   HttpOnly de autenticação.
+   ========================================================= */
+
+if (mode === "login") {
+  const form = e.currentTarget;
+  const formData = new FormData(form);
+
+  const email = formData.get("email")?.toString().trim() || "";
+  const senha = formData.get("password")?.toString() || "";
+
+  try {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      credentials: "same-origin",
+
+      body: JSON.stringify({
+        email,
+        senha,
+      }),
+    });
+
+    // Lê a resposta enviada pelo authController.
+    const data = await response.json();
+
+    // Exibe a mensagem de erro da API, se houver.
+    if (!response.ok) {
+      alert(data.erro || "Não foi possível realizar o login.");
+      return;
+    }
+
+    // O cookie de autenticação já foi criado pelo servidor.
+    alert(data.mensagem || "Login realizado com sucesso!");
+
+    // Direciona o cliente para a página inicial da loja.
+    window.location.assign("/");
+  } catch (error) {
+    console.error("Erro ao realizar login:", error);
+
+    alert("Não foi possível conectar ao servidor.");
   }
+
+  return;
+}
+
 
   /* =======================================================
      DADOS DO FORMULÁRIO DE CADASTRO
