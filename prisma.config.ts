@@ -54,7 +54,7 @@ export default defineConfig({
   datasource: {
     url:
       process.env.DATABASE_URL ??
-      "mysql://root:placeholder@localhost:3306/db_padua",
+      "mysql://root:placeholder@localhost:3307/db_padua",
   },
 
 });
