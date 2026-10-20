@@ -1,213 +1,101 @@
-// =========================================================
-// PRISMA - BANCO DE DADOS PÁDUA
-// =========================================================
-
-
-// =========================================================
-// PRISMA CLIENT
-// =========================================================
-
 generator client {
   provider = "prisma-client-js"
 }
-
-
-// =========================================================
-// BANCO DE DADOS
-// =========================================================
-// A URL de conexão está configurada no prisma.config.ts.
-// =========================================================
 
 datasource db {
   provider = "mysql"
 }
 
-
-// =========================================================
-// USUÁRIO
-// =========================================================
-// Representa clientes e administradores da Pádua.
-//
-// IMPORTANTE:
-// A senha do cliente nunca será salva diretamente.
-// senhaHash armazenará somente o hash da senha.
-// =========================================================
-
 model Usuario {
-
-  id Int @id @default(autoincrement())
-
-  nome      String
-  sobrenome String
-
-  email    String  @unique
-  telefone String?
-
-  // Sacola de compras vinculada ao cliente.
-  carrinho Carrinho?
-
-  
-
-  senhaHash String
-
-  // =========================================================
-  // CONTROLE DE VERSÃO DA SESSÃO
-  // =========================================================
-  // Cada JWT terá uma versão associada ao usuário.
-  //
-  // Quando a senha for alterada, incrementaremos essa
-  // versão para invalidar os tokens emitidos anteriormente.
-  // =========================================================
-
-  versaoSessao Int @default(1)
-
-  perfil Perfil @default(CLIENTE)
-
-  criadoEm     DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
-  enderecos Endereco[]
-
-  // Histórico de compras realizadas pelo cliente.
-  pedidos Pedido[]
+  id           Int        @id @default(autoincrement())
+  nome         String
+  sobrenome    String
+  email        String     @unique
+  telefone     String?
+  senhaHash    String
+  perfil       Perfil     @default(CLIENTE)
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+  versaoSessao Int        @default(1)
+  carrinho     Carrinho?
+  enderecos    Endereco[]
+  pedidos      Pedido[]
 
   @@map("usuarios")
 }
 
-
-// =========================================================
-// PERFIL DO USUÁRIO
-// =========================================================
-
-enum Perfil {
-  CLIENTE
-  ADMIN
-}
-
-
- // =========================================================
- // CATEGORIA DOS PRODUTOS
- // =========================================================
-
 model Categoria {
-  id        Int       @id @default(autoincrement())
-  nome      String    @unique @db.VarChar(100)
-  slug      String    @unique @db.VarChar(120)
-  ativa     Boolean   @default(true)
-
-  produtos  Produto[]
-
-  criadoEm  DateTime  @default(now())
-  atualizadoEm DateTime @updatedAt
+  id           Int       @id @default(autoincrement())
+  nome         String    @unique @db.VarChar(100)
+  slug         String    @unique @db.VarChar(120)
+  ativa        Boolean   @default(true)
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  produtos     Produto[]
 
   @@map("categorias")
 }
 
-// =========================================================
-// PRODUTO
-// =========================================================
-
 model Produto {
-  id          Int       @id @default(autoincrement())
-  nome        String    @db.VarChar(150)
-  slug        String    @unique @db.VarChar(180)
-  descricao   String?   @db.Text
-
-  // Valores monetários devem utilizar Decimal.
-  preco       Decimal   @db.Decimal(10, 2)
-  precoPromocional Decimal? @db.Decimal(10, 2)
-
-  categoriaId Int
-  categoria   Categoria @relation(fields: [categoriaId], references: [id])
-
-  ativo       Boolean   @default(false)
-  destaque    Boolean   @default(false)
-
-  variantes   VarianteProduto[]
-  imagens     ImagemProduto[]
-
-  criadoEm    DateTime  @default(now())
-  atualizadoEm DateTime @updatedAt
+  id               Int               @id @default(autoincrement())
+  nome             String            @db.VarChar(150)
+  slug             String            @unique @db.VarChar(180)
+  descricao        String?           @db.Text
+  preco            Decimal           @db.Decimal(10, 2)
+  precoPromocional Decimal?          @db.Decimal(10, 2)
+  categoriaId      Int
+  ativo            Boolean           @default(false)
+  destaque         Boolean           @default(false)
+  criadoEm         DateTime          @default(now())
+  atualizadoEm     DateTime          @updatedAt
+  imagens          ImagemProduto[]
+  categoria        Categoria         @relation(fields: [categoriaId], references: [id])
+  variantes        VarianteProduto[]
 
   @@index([categoriaId])
   @@map("produtos")
 }
 
-// =========================================================
-// VARIANTES DOS PRODUTOS
-// =========================================================
-// Cada combinação de tamanho e cor possui estoque próprio.
-// Exemplo: Camiseta Globe / Preto / G / 5 unidades.
-// =========================================================
-
 model VarianteProduto {
-  id          Int      @id @default(autoincrement())
-
-  produtoId   Int
-  produto     Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
-
-  tamanho     String   @db.VarChar(30)
-  cor         String   @db.VarChar(60)
-
-  sku         String?  @unique @db.VarChar(100)
-  quantidade  Int      @default(0)
-  ativa       Boolean  @default(true)
-
-  // Itens de sacola que utilizam esta variante.
-  itensCarrinho ItemCarrinho[]
-
-  // Histórico de itens vendidos desta variante.
-  itensPedido ItemPedido[]
-
-  // Histórico de movimentações desta variante.
+  id                   Int                   @id @default(autoincrement())
+  produtoId            Int
+  tamanho              String                @db.VarChar(30)
+  cor                  String                @db.VarChar(60)
+  sku                  String?               @unique @db.VarChar(100)
+  quantidade           Int                   @default(0)
+  ativa                Boolean               @default(true)
+  criadoEm             DateTime              @default(now())
+  atualizadoEm         DateTime              @updatedAt
+  itensCarrinho        ItemCarrinho[]
+  itensPedido          ItemPedido[]
   movimentacoesEstoque MovimentacaoEstoque[]
+  produto              Produto               @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
-  criadoEm    DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
-
-  // Impede variantes duplicadas do mesmo produto.
   @@unique([produtoId, tamanho, cor])
   @@map("variantes_produto")
 }
 
-// =========================================================
-// IMAGENS DOS PRODUTOS
-// =========================================================
-// Armazena o endereço da imagem, não o arquivo físico.
-// =========================================================
-
 model ImagemProduto {
-  id         Int      @id @default(autoincrement())
-
-  produtoId  Int
-  produto    Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
-
-  url        String   @db.VarChar(1000)
-  textoAlt   String?  @db.VarChar(255)
-
-  ordem      Int      @default(0)
-  principal  Boolean  @default(false)
-
-  criadoEm   DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  produtoId Int
+  url       String   @db.VarChar(1000)
+  textoAlt  String?  @db.VarChar(255)
+  ordem     Int      @default(0)
+  principal Boolean  @default(false)
+  criadoEm  DateTime @default(now())
+  produto   Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 
   @@index([produtoId, ordem])
   @@map("imagens_produto")
 }
 
-
 /// Endereços cadastrados pelos clientes da Pádua Culture.
 /// Cada endereço pertence a um usuário.
 model Endereco {
   id           Int      @id @default(autoincrement())
-
-  // Relacionamento com o usuário.
   usuarioId    Int
-  usuario      Usuario  @relation(fields: [usuarioId], references: [id])
-
-  // Identificação do endereço.
   apelido      String?  @db.VarChar(50)
   destinatario String   @db.VarChar(150)
-
-  // Localização para entregas.
   cep          String   @db.VarChar(8)
   logradouro   String   @db.VarChar(200)
   numero       String   @db.VarChar(20)
@@ -215,36 +103,24 @@ model Endereco {
   bairro       String   @db.VarChar(100)
   cidade       String   @db.VarChar(100)
   estado       String   @db.Char(2)
-
-  // Identifica o endereço preferencial.
   principal    Boolean  @default(false)
-
-  // Controle de datas.
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
+  usuario      Usuario  @relation(fields: [usuarioId], references: [id])
 
-  // Facilita a consulta dos endereços de cada usuário.
   @@index([usuarioId])
-
-  // Nome físico da tabela no MySQL.
   @@map("enderecos")
 }
-
 
 /// Sacola de compras de um cliente.
 /// Cada usuário possui no máximo um carrinho.
 model Carrinho {
   id           Int            @id @default(autoincrement())
   usuarioId    Int            @unique
-
-  // Relacionamento com o cliente.
-  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
-
-  // Produtos selecionados na sacola.
-  itens        ItemCarrinho[]
-
   criadoEm     DateTime       @default(now())
   atualizadoEm DateTime       @updatedAt
+  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
+  itens        ItemCarrinho[]
 
   @@map("carrinhos")
 }
@@ -252,55 +128,37 @@ model Carrinho {
 /// Cada registro representa uma variante de produto
 /// selecionada dentro de um carrinho.
 model ItemCarrinho {
-  id           Int            @id @default(autoincrement())
+  id           Int             @id @default(autoincrement())
   carrinhoId   Int
   varianteId   Int
-  quantidade   Int            @default(1)
-
-  // Relacionamento com a sacola.
-  carrinho     Carrinho       @relation(fields: [carrinhoId], references: [id], onDelete: Cascade)
-
-  // Relacionamento com tamanho e cor do produto.
+  quantidade   Int             @default(1)
+  criadoEm     DateTime        @default(now())
+  atualizadoEm DateTime        @updatedAt
+  carrinho     Carrinho        @relation(fields: [carrinhoId], references: [id], onDelete: Cascade)
   variante     VarianteProduto @relation(fields: [varianteId], references: [id])
 
-  criadoEm     DateTime       @default(now())
-  atualizadoEm DateTime       @updatedAt
-
-  // Evita duplicar a mesma variante na sacola.
   @@unique([carrinhoId, varianteId])
-
+  @@index([varianteId], map: "itens_carrinho_varianteId_fkey")
   @@map("itens_carrinho")
 }
 
-
 /// Representa uma compra realizada na Pádua Culture.
 model Pedido {
-  id             Int                   @id @default(autoincrement())
-  usuarioId      Int
-  status         StatusPedido          @default(AGUARDANDO_PAGAMENTO)
-
-  // Valores registrados no momento da compra.
-  subtotal       Decimal               @db.Decimal(10, 2)
-  valorFrete     Decimal               @default(0) @db.Decimal(10, 2)
-  valorDesconto  Decimal               @default(0) @db.Decimal(10, 2)
-  valorTotal     Decimal               @db.Decimal(10, 2)
-
-  criadoEm       DateTime              @default(now())
-  atualizadoEm   DateTime              @updatedAt
-
-  // Pagamentos associados ao pedido.
-  pagamentos Pagamento[]
-
-  // Movimentações de estoque relacionadas ao pedido.
+  id                   Int                    @id @default(autoincrement())
+  usuarioId            Int
+  status               StatusPedido           @default(AGUARDANDO_PAGAMENTO)
+  subtotal             Decimal                @db.Decimal(10, 2)
+  valorFrete           Decimal                @default(0.00) @db.Decimal(10, 2)
+  valorDesconto        Decimal                @default(0.00) @db.Decimal(10, 2)
+  valorTotal           Decimal                @db.Decimal(10, 2)
+  criadoEm             DateTime               @default(now())
+  atualizadoEm         DateTime               @updatedAt
+  enderecoEntrega      EnderecoEntregaPedido?
+  entrega              Entrega?
+  itens                ItemPedido[]
   movimentacoesEstoque MovimentacaoEstoque[]
-
-  // Entrega vinculada ao pedido.
-  entrega Entrega?
-
-  // Relacionamentos.
-  usuario        Usuario               @relation(fields: [usuarioId], references: [id])
-  itens          ItemPedido[]
-  enderecoEntrega EnderecoEntregaPedido?
+  pagamentos           Pagamento[]
+  usuario              Usuario                @relation(fields: [usuarioId], references: [id])
 
   @@index([usuarioId])
   @@index([status])
@@ -309,20 +167,17 @@ model Pedido {
 
 /// Produtos e valores registrados no pedido.
 model ItemPedido {
-  id            Int             @id @default(autoincrement())
+  id            Int              @id @default(autoincrement())
   pedidoId      Int
   varianteId    Int?
-
-  // Cópia dos dados no momento da compra.
-  nomeProduto   String          @db.VarChar(150)
-  tamanho       String          @db.VarChar(30)
-  cor           String          @db.VarChar(60)
+  nomeProduto   String           @db.VarChar(150)
+  tamanho       String           @db.VarChar(30)
+  cor           String           @db.VarChar(60)
   quantidade    Int
-  precoUnitario Decimal         @db.Decimal(10, 2)
-  subtotal      Decimal         @db.Decimal(10, 2)
-
-  pedido        Pedido          @relation(fields: [pedidoId], references: [id])
-  variante      VarianteProduto? @relation(fields: [varianteId], references: [id], onDelete: SetNull)
+  precoUnitario Decimal          @db.Decimal(10, 2)
+  subtotal      Decimal          @db.Decimal(10, 2)
+  pedido        Pedido           @relation(fields: [pedidoId], references: [id])
+  variante      VarianteProduto? @relation(fields: [varianteId], references: [id])
 
   @@index([pedidoId])
   @@index([varianteId])
@@ -331,52 +186,33 @@ model ItemPedido {
 
 /// Endereço de entrega preservado no histórico do pedido.
 model EnderecoEntregaPedido {
-  id           Int      @id @default(autoincrement())
-  pedidoId     Int      @unique
-
-  destinatario String   @db.VarChar(150)
-  cep          String   @db.VarChar(8)
-  logradouro   String   @db.VarChar(200)
-  numero       String   @db.VarChar(20)
-  complemento  String?  @db.VarChar(150)
-  bairro       String   @db.VarChar(100)
-  cidade       String   @db.VarChar(100)
-  estado       String   @db.Char(2)
-
-  pedido       Pedido   @relation(fields: [pedidoId], references: [id])
+  id           Int     @id @default(autoincrement())
+  pedidoId     Int     @unique
+  destinatario String  @db.VarChar(150)
+  cep          String  @db.VarChar(8)
+  logradouro   String  @db.VarChar(200)
+  numero       String  @db.VarChar(20)
+  complemento  String? @db.VarChar(150)
+  bairro       String  @db.VarChar(100)
+  cidade       String  @db.VarChar(100)
+  estado       String  @db.Char(2)
+  pedido       Pedido  @relation(fields: [pedidoId], references: [id])
 
   @@map("enderecos_entrega_pedido")
 }
 
-/// Situação operacional do pedido.
-/// O status financeiro será controlado separadamente.
-enum StatusPedido {
-  AGUARDANDO_PAGAMENTO
-  CONFIRMADO
-  EM_PREPARACAO
-  ENVIADO
-  ENTREGUE
-  CANCELADO
-}
-
-
 /// Registra uma cobrança associada a um pedido.
 model Pagamento {
-  id                   Int                   @id @default(autoincrement())
+  id                   Int                  @id @default(autoincrement())
   pedidoId             Int
   metodo               MetodoPagamento
-  status               StatusPagamento       @default(PENDENTE)
-  valor                Decimal               @db.Decimal(10, 2)
-
-  // Identificador fornecido pelo provedor de pagamento.
-  identificadorExterno String?               @db.VarChar(191)
-
-  criadoEm             DateTime              @default(now())
-  atualizadoEm         DateTime              @updatedAt
+  status               StatusPagamento      @default(PENDENTE)
+  valor                Decimal              @db.Decimal(10, 2)
+  identificadorExterno String?
+  criadoEm             DateTime             @default(now())
+  atualizadoEm         DateTime             @updatedAt
   pagoEm               DateTime?
-
-  // Relacionamentos.
-  pedido               Pedido                @relation(fields: [pedidoId], references: [id])
+  pedido               Pedido               @relation(fields: [pedidoId], references: [id])
   transacoes           TransacaoPagamento[]
 
   @@index([pedidoId])
@@ -388,22 +224,75 @@ model Pagamento {
 model TransacaoPagamento {
   id                   Int       @id @default(autoincrement())
   pagamentoId          Int
-
-  // Exemplo: CRIACAO, CONFIRMACAO, ESTORNO.
   tipo                 String    @db.VarChar(50)
   status               String    @db.VarChar(50)
-
-  // Identificador externo da operação.
-  identificadorExterno String?   @db.VarChar(191)
-
+  identificadorExterno String?
   valor                Decimal   @db.Decimal(10, 2)
   criadoEm             DateTime  @default(now())
-
   pagamento            Pagamento @relation(fields: [pagamentoId], references: [id])
 
   @@index([pagamentoId])
   @@index([identificadorExterno])
   @@map("transacoes_pagamento")
+}
+
+/// Informações logísticas de um pedido da Pádua Culture.
+/// Cada pedido poderá possuir uma entrega.
+model Entrega {
+  id                 Int           @id @default(autoincrement())
+  pedidoId           Int           @unique
+  transportadora     String?       @db.VarChar(100)
+  modalidadeFrete    String?       @db.VarChar(100)
+  codigoRastreamento String?       @db.VarChar(150)
+  urlRastreamento    String?       @db.VarChar(1000)
+  status             StatusEntrega @default(PENDENTE)
+  previsaoEntrega    DateTime?
+  dataPostagem       DateTime?
+  dataEntrega        DateTime?
+  criadoEm           DateTime      @default(now())
+  atualizadoEm       DateTime      @updatedAt
+  pedido             Pedido        @relation(fields: [pedidoId], references: [id])
+
+  @@index([status])
+  @@index([codigoRastreamento])
+  @@map("entregas")
+}
+
+/// Histórico de movimentações de estoque da Pádua Culture.
+/// Cada movimentação pertence a uma variante de produto.
+model MovimentacaoEstoque {
+  id             Int                     @id @default(autoincrement())
+  varianteId     Int
+  pedidoId       Int?
+  tipo           TipoMovimentacaoEstoque
+  quantidade     Int
+  motivo         String?                 @db.VarChar(255)
+  saldoAnterior  Int
+  saldoPosterior Int
+  criadoEm       DateTime                @default(now())
+  pedido         Pedido?                 @relation(fields: [pedidoId], references: [id])
+  variante       VarianteProduto         @relation(fields: [varianteId], references: [id])
+
+  @@index([varianteId, criadoEm])
+  @@index([pedidoId])
+  @@index([tipo])
+  @@map("movimentacoes_estoque")
+}
+
+enum Perfil {
+  CLIENTE
+  ADMIN
+}
+
+/// Situação operacional do pedido.
+/// O status financeiro será controlado separadamente.
+enum StatusPedido {
+  AGUARDANDO_PAGAMENTO
+  CONFIRMADO
+  EM_PREPARACAO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
 }
 
 /// Métodos de pagamento inicialmente aceitos.
@@ -423,7 +312,6 @@ enum StatusPagamento {
   ESTORNADO
 }
 
-
 /// Situação do processo de entrega.
 enum StatusEntrega {
   PENDENTE
@@ -437,38 +325,6 @@ enum StatusEntrega {
   CANCELADO
 }
 
-/// Informações logísticas de um pedido da Pádua Culture.
-/// Cada pedido poderá possuir uma entrega.
-model Entrega {
-  id                  Int           @id @default(autoincrement())
-  pedidoId            Int           @unique
-
-  // Informações de transporte.
-  transportadora      String?       @db.VarChar(100)
-  modalidadeFrete     String?       @db.VarChar(100)
-  codigoRastreamento  String?       @db.VarChar(150)
-  urlRastreamento     String?       @db.VarChar(1000)
-
-  // Situação da entrega.
-  status              StatusEntrega @default(PENDENTE)
-
-  // Datas do processo logístico.
-  previsaoEntrega     DateTime?
-  dataPostagem        DateTime?
-  dataEntrega         DateTime?
-
-  // Controle e auditoria.
-  criadoEm            DateTime      @default(now())
-  atualizadoEm        DateTime      @updatedAt
-
-  // Relacionamento com o pedido.
-  pedido              Pedido        @relation(fields: [pedidoId], references: [id])
-
-  @@index([status])
-  @@index([codigoRastreamento])
-  @@map("entregas")
-}
-
 /// Tipos de movimentação realizados no estoque.
 enum TipoMovimentacaoEstoque {
   ENTRADA
@@ -477,37 +333,3 @@ enum TipoMovimentacaoEstoque {
   LIBERACAO_RESERVA
   AJUSTE
 }
-
-/// Histórico de movimentações de estoque da Pádua Culture.
-/// Cada movimentação pertence a uma variante de produto.
-model MovimentacaoEstoque {
-  id             Int                     @id @default(autoincrement())
-
-  // Variante que sofreu a movimentação.
-  varianteId     Int
-
-  // Pedido relacionado, quando aplicável.
-  pedidoId       Int?
-
-  // Informações da movimentação.
-  tipo           TipoMovimentacaoEstoque
-  quantidade     Int
-  motivo         String?                 @db.VarChar(255)
-
-  // Quantidade disponível antes e depois da operação.
-  saldoAnterior  Int
-  saldoPosterior Int
-
-  // Data do registro.
-  criadoEm       DateTime                @default(now())
-
-  // Relacionamentos.
-  variante       VarianteProduto         @relation(fields: [varianteId], references: [id])
-  pedido         Pedido?                 @relation(fields: [pedidoId], references: [id])
-
-  @@index([varianteId, criadoEm])
-  @@index([pedidoId])
-  @@index([tipo])
-  @@map("movimentacoes_estoque")
-}
-
