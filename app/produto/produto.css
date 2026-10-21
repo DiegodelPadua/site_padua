@@ -434,3 +434,23 @@
     max-width: 90%;
   }
 }
+
+/* =========================================================
+   PÁDUA CULTURE — ESTADOS DE DISPONIBILIDADE
+   ========================================================= */
+
+.sizeButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.addToCart:disabled {
+  background: #888;
+  color: #f2f0e9;
+  cursor: not-allowed;
+}
+
+.addToCart:disabled:hover {
+  background: #888;
+  color: #f2f0e9;
+}
