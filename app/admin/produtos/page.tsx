@@ -311,10 +311,13 @@ export default function AdminProdutosPage() {
   return (
     <main
       style={{
-        padding: "40px",
+        padding: "40px 24px 80px",
         backgroundColor: "#f5f5f5",
         minHeight: "100vh",
         color: "#171717",
+        maxWidth: "1248px",
+        margin: "0 auto",
+        boxSizing: "border-box",
       }}
     >
       <h1

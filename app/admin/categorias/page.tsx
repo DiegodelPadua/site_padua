@@ -2,15 +2,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 /* =========================================================
    PÁDUA CULTURE — GERENCIAMENTO DE CATEGORIAS
    =========================================================
-   - Consulta categorias pela API administrativa
-   - Cadastra novas categorias
-   - Exibe status de cada categoria
-   - Utiliza a sessão autenticada do administrador
+   - Consulta categorias no MySQL pela API.
+   - Cadastra novas categorias.
+   - Exibe o status das categorias.
+   - Utiliza a navegação compartilhada do AdminLayout.
    ========================================================= */
 
 type Categoria = {
@@ -22,22 +21,35 @@ type Categoria = {
   atualizadoEm: string;
 };
 
+// Estilos compartilhados com o padrão visual administrativo.
+const estiloCartao: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid #ddd",
+  padding: "32px",
+};
+
+const estiloCelula: React.CSSProperties = {
+  padding: "16px 12px",
+  borderBottom: "1px solid #eee",
+  fontSize: 14,
+};
+
 export default function AdminCategoriasPage() {
-  // Categorias retornadas pelo banco de dados.
+  // Dados reais retornados pelo MySQL.
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
-  // Nome digitado para cadastrar uma nova categoria.
+  // Campo de cadastro.
   const [nome, setNome] = useState("");
 
-  // Estados de carregamento e mensagens.
+  // Estados da interface.
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
 
-  // =======================================================
-  // CONSULTAR CATEGORIAS
-  // =======================================================
+  /* =======================================================
+     CONSULTAR CATEGORIAS
+     ======================================================= */
 
   async function carregarCategorias() {
     setCarregando(true);
@@ -58,7 +70,7 @@ export default function AdminCategoriasPage() {
         );
       }
 
-      setCategorias(dados.categorias);
+      setCategorias(dados.categorias || []);
     } catch (error) {
       setErro(
         error instanceof Error
@@ -70,14 +82,14 @@ export default function AdminCategoriasPage() {
     }
   }
 
-  // Carrega as categorias ao abrir a página.
+  // Consulta as categorias quando a página é aberta.
   useEffect(() => {
     void carregarCategorias();
   }, []);
 
-  // =======================================================
-  // CADASTRAR NOVA CATEGORIA
-  // =======================================================
+  /* =======================================================
+     CADASTRAR NOVA CATEGORIA
+     ======================================================= */
 
   async function cadastrarCategoria(
     evento: React.FormEvent<HTMLFormElement>
@@ -116,10 +128,11 @@ export default function AdminCategoriasPage() {
       }
 
       setNome("");
-      setMensagem("Categoria cadastrada com sucesso!");
 
-      // Atualiza a lista com os dados gravados no MySQL.
+      // Reconsulta o MySQL após o cadastro.
       await carregarCategorias();
+
+      setMensagem("Categoria cadastrada com sucesso!");
     } catch (error) {
       setErro(
         error instanceof Error
@@ -131,9 +144,9 @@ export default function AdminCategoriasPage() {
     }
   }
 
-  // =======================================================
-  // INTERFACE ADMINISTRATIVA
-  // =======================================================
+  /* =======================================================
+     INTERFACE ADMINISTRATIVA
+     ======================================================= */
 
   return (
     <main
@@ -141,61 +154,49 @@ export default function AdminCategoriasPage() {
         minHeight: "100vh",
         background: "#f5f5f5",
         color: "#171717",
-        padding: "48px 24px",
-        fontFamily: "Arial, sans-serif",
+        padding: "40px 24px 80px",
       }}
     >
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        {/* Navegação de retorno ao painel. */}
-        <Link
-          href="/admin"
-          style={{
-            color: "#555",
-            textDecoration: "none",
-            fontSize: 13,
-            fontWeight: 700,
-          }}
-        >
-          ← VOLTAR AO PAINEL
-        </Link>
-
-        <header style={{ marginTop: 32, marginBottom: 36 }}>
-          <p
-            style={{
-              fontSize: 12,
-              letterSpacing: 3,
-              fontWeight: 700,
-            }}
-          >
-            PÁDUA CULTURE / ADMIN
-          </p>
-
+      <div
+        style={{
+          maxWidth: "1200px",
+          margin: "0 auto",
+        }}
+      >
+        {/* CABEÇALHO DA PÁGINA */}
+        <header style={{ marginBottom: "36px" }}>
           <h1
             style={{
-              fontSize: "clamp(32px, 5vw, 54px)",
-              letterSpacing: -2,
-              margin: "12px 0",
+              fontSize: "clamp(40px, 6vw, 76px)",
+              fontWeight: 800,
+              letterSpacing: "-3px",
+              lineHeight: 1,
+              margin: "0 0 12px",
             }}
           >
             Categorias
           </h1>
 
-          <p style={{ color: "#666", fontSize: 15 }}>
+          <p
+            style={{
+              color: "#666",
+              fontSize: "18px",
+              margin: 0,
+            }}
+          >
             Organize as seções da loja e cadastre novas
             categorias de produtos.
           </p>
         </header>
 
-        {/* Formulário de cadastro. */}
-        <section
-          style={{
-            background: "#fff",
-            border: "1px solid #ddd",
-            padding: 28,
-            marginBottom: 28,
-          }}
-        >
-          <h2 style={{ fontSize: 20, marginTop: 0 }}>
+        {/* FORMULÁRIO DE CADASTRO */}
+        <section style={estiloCartao}>
+          <h2
+            style={{
+              fontSize: "26px",
+              margin: "0 0 24px",
+            }}
+          >
             Nova categoria
           </h2>
 
@@ -203,8 +204,9 @@ export default function AdminCategoriasPage() {
             onSubmit={cadastrarCategoria}
             style={{
               display: "flex",
-              gap: 12,
+              gap: "16px",
               flexWrap: "wrap",
+              alignItems: "stretch",
             }}
           >
             <input
@@ -214,11 +216,15 @@ export default function AdminCategoriasPage() {
               placeholder="Ex.: Calças"
               maxLength={100}
               required
+              aria-label="Nome da categoria"
               style={{
                 flex: "1 1 240px",
-                padding: "15px",
+                minWidth: 0,
+                padding: "16px",
                 border: "1px solid #ccc",
-                fontSize: 15,
+                background: "#fff",
+                fontSize: "16px",
+                boxSizing: "border-box",
               }}
             />
 
@@ -226,10 +232,10 @@ export default function AdminCategoriasPage() {
               type="submit"
               disabled={salvando}
               style={{
+                padding: "16px 32px",
                 background: "#171717",
                 color: "#fff",
                 border: "none",
-                padding: "15px 24px",
                 fontWeight: 700,
                 cursor: salvando ? "wait" : "pointer",
                 opacity: salvando ? 0.6 : 1,
@@ -239,28 +245,45 @@ export default function AdminCategoriasPage() {
             </button>
           </form>
 
-          {mensagem && (
-            <p role="status" style={{ color: "#237a36" }}>
-              {mensagem}
+          {/* MENSAGENS DE ERRO E SUCESSO */}
+          {erro && (
+            <p
+              role="alert"
+              style={{
+                color: "#b91c1c",
+                marginTop: "16px",
+              }}
+            >
+              {erro}
             </p>
           )}
 
-          {erro && (
-            <p role="alert" style={{ color: "#b42318" }}>
-              {erro}
+          {mensagem && (
+            <p
+              role="status"
+              style={{
+                color: "#15803d",
+                marginTop: "16px",
+              }}
+            >
+              {mensagem}
             </p>
           )}
         </section>
 
-        {/* Listagem das categorias cadastradas. */}
+        {/* LISTAGEM DAS CATEGORIAS */}
         <section
           style={{
-            background: "#fff",
-            border: "1px solid #ddd",
-            padding: 28,
+            ...estiloCartao,
+            marginTop: "32px",
           }}
         >
-          <h2 style={{ fontSize: 20, marginTop: 0 }}>
+          <h2
+            style={{
+              fontSize: "26px",
+              margin: "0 0 24px",
+            }}
+          >
             Categorias cadastradas ({categorias.length})
           </h2>
 
@@ -280,15 +303,18 @@ export default function AdminCategoriasPage() {
                 }}
               >
                 <thead>
-                  <tr>
+                  <tr
+                    style={{
+                      borderBottom: "2px solid #171717",
+                    }}
+                  >
                     {["ID", "NOME", "SLUG", "STATUS"].map(
                       (titulo) => (
                         <th
                           key={titulo}
                           style={{
-                            padding: "16px 12px",
-                            borderBottom: "2px solid #171717",
-                            fontSize: 12,
+                            padding: "14px 12px",
+                            fontSize: "12px",
                           }}
                         >
                           {titulo}
@@ -316,7 +342,7 @@ export default function AdminCategoriasPage() {
                       <td style={estiloCelula}>
                         <span
                           style={{
-                            fontSize: 12,
+                            fontSize: "12px",
                             fontWeight: 700,
                             color: categoria.ativa
                               ? "#237a36"
@@ -339,10 +365,3 @@ export default function AdminCategoriasPage() {
     </main>
   );
 }
-
-// Estilo compartilhado pelas células da tabela.
-const estiloCelula: React.CSSProperties = {
-  padding: "16px 12px",
-  borderBottom: "1px solid #eee",
-  fontSize: 14,
-};
