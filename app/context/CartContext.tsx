@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -8,9 +9,16 @@ import {
   ReactNode,
 } from "react";
 
-
 /* =========================================================
-   TIPO DE UM ITEM DA SACOLA
+   PÁDUA CULTURE — SACOLA DE COMPRAS
+
+   Compatibilidade:
+   - Produtos antigos cadastrados manualmente
+   - Produtos e variantes cadastrados no MySQL
+
+   O estoque exibido na interface é uma referência.
+   A disponibilidade real deverá ser validada no
+   servidor antes de finalizar qualquer pedido.
    ========================================================= */
 
 export type CartItem = {
@@ -21,36 +29,27 @@ export type CartItem = {
   size: string;
   color: string;
   quantity: number;
+
+  // Identificador real da variante no MySQL.
+  variantId?: number;
+
+  // Estoque informado pela API pública.
+  stock?: number;
 };
 
+type CartContextType = {
+  items: CartItem[];
+  cartCount: number;
 
-/* =========================================================
-   TIPO DO CONTEXTO
-   ========================================================= */
+  addItem: (item: CartItem) => boolean;
+  increaseQuantity: (id: string) => void;
+  decreaseQuantity: (id: string) => void;
+  removeItem: (id: string) => void;
+};
 
-   type CartContextType = {
-    items: CartItem[];
-    cartCount: number;
-  
-    addItem: (item: CartItem) => void;
-    increaseQuantity: (id: string) => void;
-    decreaseQuantity: (id: string) => void;
-    removeItem: (id: string) => void;
-  };
-
-
-/* =========================================================
-   CRIAÇÃO DO CONTEXTO
-   ========================================================= */
-
-const CartContext = createContext<CartContextType | undefined>(
-  undefined
-);
-
-
-/* =========================================================
-   PROVIDER DA SACOLA
-   ========================================================= */
+const CartContext = createContext<
+  CartContextType | undefined
+>(undefined);
 
 export function CartProvider({
   children,
@@ -60,36 +59,50 @@ export function CartProvider({
   const [items, setItems] = useState<CartItem[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-
   /* =======================================================
      CARREGAR SACOLA SALVA
      ======================================================= */
 
   useEffect(() => {
-    const savedCart = localStorage.getItem("padua-cart");
+    try {
+      const savedCart = localStorage.getItem("padua-cart");
 
-    if (savedCart) {
-      try {
-        const parsedCart = JSON.parse(savedCart);
+      if (savedCart) {
+        const parsedCart: unknown = JSON.parse(savedCart);
 
-        setItems(parsedCart);
-      } catch {
-        localStorage.removeItem("padua-cart");
+        if (Array.isArray(parsedCart)) {
+          // Mantém somente registros com estrutura básica válida.
+          const validItems = parsedCart.filter(
+            (item): item is CartItem =>
+              item !== null &&
+              typeof item === "object" &&
+              typeof item.id === "string" &&
+              typeof item.name === "string" &&
+              typeof item.price === "number" &&
+              Number.isFinite(item.price) &&
+              typeof item.image === "string" &&
+              typeof item.size === "string" &&
+              typeof item.color === "string" &&
+              Number.isInteger(item.quantity) &&
+              item.quantity > 0
+          );
+
+          setItems(validItems);
+        }
       }
+    } catch {
+      localStorage.removeItem("padua-cart");
+    } finally {
+      setLoaded(true);
     }
-
-    setLoaded(true);
   }, []);
-
 
   /* =======================================================
      SALVAR SACOLA
      ======================================================= */
 
   useEffect(() => {
-    if (!loaded) {
-      return;
-    }
+    if (!loaded) return;
 
     localStorage.setItem(
       "padua-cart",
@@ -97,57 +110,90 @@ export function CartProvider({
     );
   }, [items, loaded]);
 
-
   /* =======================================================
-     ADICIONAR ITEM
+     ADICIONAR PRODUTO
      ======================================================= */
 
-    function addItem(item: CartItem) {
-    setItems((currentItems) => {
-        // Procura o mesmo produto, com a mesma cor e tamanho
-        const existingItem = currentItems.find(
-        (cartItem) => cartItem.id === item.id
-        );
-
-        // Se já estiver na sacola, aumenta a quantidade
-        if (existingItem) {
-        return currentItems.map((cartItem) =>
-            cartItem.id === item.id
-            ? {
-                ...cartItem,
-                quantity: cartItem.quantity + 1,
-                }
-            : cartItem
-        );
-        }
-
-        // Se ainda não estiver, adiciona como novo item
-        return [...currentItems, item];
-    });
+  function addItem(item: CartItem): boolean {
+    // Bloqueia quantidade inicial inválida.
+    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+      return false;
     }
 
-    /* =========================================================
-   AUMENTAR QUANTIDADE
-   ========================================================= */
+    // Verifica o estoque informado para variantes reais.
+    if (
+      item.stock !== undefined &&
+      item.quantity > item.stock
+    ) {
+      return false;
+    }
 
-function increaseQuantity(id: string) {
+    // A atualização usa o estado mais recente da sacola.
+    setItems((currentItems) => {
+      const existingItem = currentItems.find(
+        (cartItem) => cartItem.id === item.id
+      );
+
+      if (existingItem) {
+        const newQuantity =
+          existingItem.quantity + item.quantity;
+
+        const stock = item.stock ?? existingItem.stock;
+
+        // Não ultrapassa o estoque conhecido.
+        if (
+          stock !== undefined &&
+          newQuantity > stock
+        ) {
+          return currentItems;
+        }
+
+        return currentItems.map((cartItem) =>
+          cartItem.id === item.id
+            ? {
+                ...cartItem,
+                quantity: newQuantity,
+                stock,
+              }
+            : cartItem
+        );
+      }
+
+      return [...currentItems, item];
+    });
+
+    return true;
+  }
+
+  /* =======================================================
+     AUMENTAR QUANTIDADE
+     ======================================================= */
+
+  function increaseQuantity(id: string) {
     setItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              quantity: item.quantity + 1,
-            }
-          : item
-      )
+      currentItems.map((item) => {
+        if (item.id !== id) return item;
+
+        // Respeita o estoque conhecido.
+        if (
+          item.stock !== undefined &&
+          item.quantity >= item.stock
+        ) {
+          return item;
+        }
+
+        return {
+          ...item,
+          quantity: item.quantity + 1,
+        };
+      })
     );
   }
-  
-  
-  /* =========================================================
+
+  /* =======================================================
      DIMINUIR QUANTIDADE
-     ========================================================= */
-  
+     ======================================================= */
+
   function decreaseQuantity(id: string) {
     setItems((currentItems) =>
       currentItems
@@ -162,23 +208,19 @@ function increaseQuantity(id: string) {
         .filter((item) => item.quantity > 0)
     );
   }
-  
-  
-  /* =========================================================
-     REMOVER PRODUTO
-     ========================================================= */
-  
+
+  /* =======================================================
+     REMOVER ITEM
+     ======================================================= */
+
   function removeItem(id: string) {
     setItems((currentItems) =>
-      currentItems.filter(
-        (item) => item.id !== id
-      )
+      currentItems.filter((item) => item.id !== id)
     );
   }
 
-
   /* =======================================================
-     QUANTIDADE TOTAL
+     CONTADOR DA SACOLA
      ======================================================= */
 
   const cartCount = items.reduce(
@@ -186,26 +228,24 @@ function increaseQuantity(id: string) {
     0
   );
 
-
   return (
     <CartContext.Provider
-    value={{
-      items,
-      cartCount,
-      addItem,
-      increaseQuantity,
-      decreaseQuantity,
-      removeItem,
-    }}
-  >
+      value={{
+        items,
+        cartCount,
+        addItem,
+        increaseQuantity,
+        decreaseQuantity,
+        removeItem,
+      }}
+    >
       {children}
     </CartContext.Provider>
   );
 }
 
-
 /* =========================================================
-   HOOK DA SACOLA
+   HOOK PARA UTILIZAR A SACOLA
    ========================================================= */
 
 export function useCart() {

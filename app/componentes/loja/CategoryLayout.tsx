@@ -1,50 +1,50 @@
 
-
-
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
 import "./store.css";
+
 import StoreHeader from "./StoreHeader";
 import StoreFooter from "./StoreFooter";
 import { useCart } from "../../context/CartContext";
 
-
 /* =========================================================
-   TIPO DO PRODUTO
+   PÁDUA CULTURE — CATÁLOGO DINÂMICO
+
+   Preserva as classes CSS do layout original.
+
+   Produtos e variantes agora são provenientes do MySQL.
    ========================================================= */
 
+export type ProductVariant = {
+  id: number;
+  size: string;
+  color: string;
+  sku: string | null;
+  stock: number;
+  available: boolean;
+};
+
 export type Product = {
+  id: number;
   name: string;
+  slug: string;
   category: string;
   price: string;
   image: string;
-  slug: string;
+  variants: ProductVariant[];
+  available: boolean;
 };
-
-
-
-
-/* =========================================================
-   PROPRIEDADES DO LAYOUT
-   ========================================================= */
 
 type CategoryLayoutProps = {
   number: string;
   title: string;
-
   products: Product[];
-
   nextLabel?: string;
   nextCategory: string;
   nextHref: string;
 };
-
-
-/* =========================================================
-   LAYOUT DA CATEGORIA
-   ========================================================= */
 
 export default function CategoryLayout({
   number,
@@ -54,215 +54,233 @@ export default function CategoryLayout({
   nextCategory,
   nextHref,
 }: CategoryLayoutProps) {
+  const { addItem, items } = useCart();
 
-  const { addItem } = useCart();
+  // Produto que está com a compra rápida aberta.
+  const [quickAddOpen, setQuickAddOpen] = useState<
+    string | null
+  >(null);
 
-  const [quickAddOpen, setQuickAddOpen] = useState<string | null>(null);
-  const [quickColor, setQuickColor] = useState("OFF-WHITE");
-  /* =========================================================
-   NOTIFICAÇÃO - PRODUTO ADICIONADO
-   =========================================================
-   Armazena a mensagem que será exibida quando o cliente
-   adicionar um produto à sacola através do botão "+".
+  // Cor selecionada na compra rápida.
+  const [quickColor, setQuickColor] = useState("");
 
-   Quando o valor for null, nenhuma mensagem será exibida.
-   ========================================================= */
+  // Mensagem de confirmação ou indisponibilidade.
+  const [cartMessage, setCartMessage] = useState<
+    string | null
+  >(null);
 
-  const [cartMessage, setCartMessage] = useState<string | null>(null);
+  const [cartError, setCartError] = useState(false);
 
-/* =========================================================
-   ADICIONAR PRODUTO RAPIDAMENTE À SACOLA
-   =========================================================
-   Recebe o produto e o tamanho selecionado.
+  /* =======================================================
+     ABRIR / FECHAR COMPRA RÁPIDA
+     ======================================================= */
 
-   A cor utilizada será a que estiver selecionada no
-   Quick Add no momento da compra.
-   ========================================================= */
+  function toggleQuickAdd(product: Product) {
+    if (quickAddOpen === product.slug) {
+      setQuickAddOpen(null);
+      return;
+    }
 
-   function handleQuickAdd(product: Product, size: string) {
+    // Seleciona inicialmente a primeira cor cadastrada.
+    const firstColor =
+      product.variants.find((variant) => variant.available)
+        ?.color ??
+      product.variants[0]?.color ??
+      "";
 
-    /* Converte o preço de:
-       "R$ 149,90"
-       para:
-       149.90
-    */
-  
+    setQuickColor(firstColor);
+    setQuickAddOpen(product.slug);
+  }
+
+  /* =======================================================
+     CONSULTAR CORES CADASTRADAS
+     ======================================================= */
+
+  function getColors(product: Product) {
+    return [
+      ...new Set(
+        product.variants.map((variant) => variant.color)
+      ),
+    ];
+  }
+
+  /* =======================================================
+     CONSULTAR TAMANHOS DA COR SELECIONADA
+     ======================================================= */
+
+  function getSizes(product: Product) {
+    return product.variants.filter(
+      (variant) => variant.color === quickColor
+    );
+  }
+
+  /* =======================================================
+     EXIBIR MENSAGEM
+     ======================================================= */
+
+  function showMessage(message: string, error = false) {
+    setCartMessage(message);
+    setCartError(error);
+  }
+
+  /* =======================================================
+     ADICIONAR VARIANTE REAL À SACOLA
+
+     A validação no navegador melhora a experiência,
+     mas o checkout deverá conferir novamente o estoque
+     e o preço diretamente no servidor.
+     ======================================================= */
+
+  function handleQuickAdd(
+    product: Product,
+    variant: ProductVariant
+  ) {
+    if (!variant.available || variant.stock <= 0) {
+      showMessage("VARIANTE INDISPONÍVEL", true);
+      return;
+    }
+
+    const cartId = `variante-${variant.id}`;
+
+    // Considera a quantidade já existente na sacola.
+    const existingQuantity =
+      items.find((item) => item.id === cartId)
+        ?.quantity ?? 0;
+
+    if (existingQuantity >= variant.stock) {
+      showMessage(
+        "QUANTIDADE MÁXIMA DISPONÍVEL NA SACOLA",
+        true
+      );
+      return;
+    }
+
+    // O preço já chega formatado para a vitrine.
     const price = Number(
       product.price
         .replace("R$", "")
-        .replace(".", "")
+        .replace(/\./g, "")
         .replace(",", ".")
         .trim()
     );
-  
-  
-    /* =======================================================
-       ADICIONA O PRODUTO À SACOLA
-       ======================================================= */
-  
+
+    if (!Number.isFinite(price) || price < 0) {
+      showMessage("PREÇO INDISPONÍVEL", true);
+      return;
+    }
+
     addItem({
-      id: `${product.slug}-${quickColor}-${size}`,
+      id: cartId,
+      variantId: variant.id,
       name: product.name,
-      price: price,
+      price,
       image: product.image,
-      size: size,
-      color: quickColor,
+      size: variant.size,
+      color: variant.color,
       quantity: 1,
+      stock: variant.stock,
     });
-  
-  
-    /* =======================================================
-       EXIBE A CONFIRMAÇÃO PARA O CLIENTE
-       =======================================================
-       Exemplo:
-       Pádua Globe — PRETO / G
-       ======================================================= */
-  
-    setCartMessage(
-      `${product.name} — ${quickColor} / ${size}`
+
+    showMessage(
+      `${product.name} — ${variant.color} / ${variant.size}`
     );
-  
-  
-    /* Fecha o painel de seleção */
-  
+
     setQuickAddOpen(null);
-  
-  
-    /* =======================================================
-       REMOVE A MENSAGEM AUTOMATICAMENTE
-       =======================================================
-       A notificação ficará visível durante 3 segundos.
-       ======================================================= */
-  
-    setTimeout(() => {
-      setCartMessage(null);
-    }, 3000);
   }
 
   return (
-
     <main className="storePage">
-
-      {/* =====================================================
-          HEADER
-          ===================================================== */}
-
+      {/* CABEÇALHO ORIGINAL */}
       <StoreHeader />
 
-
-      {/* =====================================================
-          HERO DA CATEGORIA
-          ===================================================== */}
-
+      {/* HERO ORIGINAL DA CATEGORIA */}
       <section className="categoryHero">
-
-        <span>
-          LOJA / {number}
-        </span>
-
-        <h1>
-          {title}
-        </h1>
-
-        <p>
-          {products.length} PRODUTOS
-        </p>
-
+        <span>LOJA / {number}</span>
+        <h1>{title}</h1>
+        <p>{products.length} PRODUTOS</p>
       </section>
 
-
-      {/* =====================================================
-          BARRA DA CATEGORIA
-          ===================================================== */}
-
+      {/* BARRA ORIGINAL */}
       <div className="categoryBar">
-
-        <span>
-          {title}
-        </span>
-
-        <span>
-          PÁDUA — 2026
-        </span>
-
+        <span>{title}</span>
+        <span>PÁDUA — 2026</span>
       </div>
 
-
-      {/* =====================================================
-          PRODUTOS
-          ===================================================== */}
-
+      {/* CATÁLOGO DINÂMICO */}
       <section className="storeProducts">
+        {products.length === 0 && (
+          <p>
+            NENHUM PRODUTO DISPONÍVEL NESTA CATEGORIA.
+          </p>
+        )}
 
         {products.map((product) => (
-
           <article
             className="storeProduct"
-            key={product.name}
+            key={product.id}
           >
-
-            {/* IMAGEM */}
-
-            {/* =====================================================
-                IMAGEM DO PRODUTO
-                =====================================================
-                Ao clicar na imagem, o cliente é direcionado
-                para a página individual do produto.
-                ===================================================== */}
-
+            {/* FOTOGRAFIA PRINCIPAL */}
             <div className="storeProductImage">
+              <Link
+                href={`/produto/${product.slug}`}
+                className="storeProductImageLink"
+              >
+                {product.image ? (
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      minHeight: 250,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    PÁDUA CULTURE
+                  </div>
+                )}
+              </Link>
 
-
-            <Link
-              href={`/produto/${product.slug}`}
-              className="storeProductImageLink"
-            >
-              <img
-                src={product.image}
-                alt={product.name}
-              />
-            </Link>
-
-
-
-             {/* =====================================================
-                  BOTÃO DE ADIÇÃO RÁPIDA
-                  ===================================================== */}
-
+              {/* BOTÃO + ORIGINAL */}
               <button
                 type="button"
                 className="storeQuickAdd"
-                aria-label={`Adicionar ${product.name} à sacola`}
-                onClick={() => {
-                  setQuickAddOpen(
-                    quickAddOpen === product.slug
-                      ? null
-                      : product.slug
-                  );
-
-                  setQuickColor("OFF-WHITE");
-                }}
+                aria-label={`Selecionar variante de ${product.name}`}
+                aria-expanded={
+                  quickAddOpen === product.slug
+                }
+                disabled={!product.available}
+                onClick={() => toggleQuickAdd(product)}
               >
-                {quickAddOpen === product.slug ? "×" : "+"}
+                {quickAddOpen === product.slug
+                  ? "×"
+                  : "+"}
               </button>
-
             </div>
 
-
-            
-
+            {/* SELEÇÃO DINÂMICA DE VARIANTES */}
             {quickAddOpen === product.slug && (
               <div className="storeQuickPanel">
-
                 <span>SELECIONE A COR</span>
 
                 <div className="storeQuickColors">
-                  {["OFF-WHITE", "PRETO"].map((color) => (
+                  {getColors(product).map((color) => (
                     <button
                       key={color}
                       type="button"
-                      className={quickColor === color ? "active" : ""}
-                      onClick={() => setQuickColor(color)}
+                      className={
+                        quickColor === color
+                          ? "active"
+                          : ""
+                      }
+                      onClick={() =>
+                        setQuickColor(color)
+                      }
                     >
                       {color}
                     </button>
@@ -272,143 +290,98 @@ export default function CategoryLayout({
                 <span>SELECIONE O TAMANHO</span>
 
                 <div className="storeQuickSizes">
-                  {["P", "M", "G", "GG"].map((size) => (
+                  {getSizes(product).map((variant) => (
                     <button
-                      key={size}
+                      key={variant.id}
                       type="button"
-                      onClick={() => handleQuickAdd(product, size)}
+                      disabled={
+                        !variant.available ||
+                        variant.stock <= 0
+                      }
+                      title={
+                        variant.stock > 0
+                          ? `${variant.stock} disponível(is)`
+                          : "Sem estoque"
+                      }
+                      onClick={() =>
+                        handleQuickAdd(product, variant)
+                      }
                     >
-                      {size}
+                      {variant.size}
                     </button>
                   ))}
                 </div>
-
               </div>
             )}
 
-            {/* =====================================================
-                INFORMAÇÕES DO PRODUTO
-                =====================================================
-                O nome do produto também funciona como link para
-                sua página individual.
-
-                A categoria e o preço continuam apenas como
-                informações visuais.
-                ===================================================== */}
-
+            {/* INFORMAÇÕES ORIGINAIS DO CARD */}
             <div className="storeProductInfo">
+              <div>
+                <Link
+                  href={`/produto/${product.slug}`}
+                  className="storeProductNameLink"
+                >
+                  <h2>{product.name}</h2>
+                </Link>
 
-            <div>
+                <p>{product.category}</p>
+              </div>
 
-              {/* =================================================
-                  NOME DO PRODUTO
-                  =================================================
-                  Utilizamos o slug para gerar automaticamente
-                  a rota individual de cada produto.
-                  ================================================= */}
-
-              <Link
-                href={`/produto/${product.slug}`}
-                className="storeProductNameLink"
-              >
-                <h2>
-                  {product.name}
-                </h2>
-              </Link>
-
-
-              {/* Categoria do produto */}
-
-              <p>
-                {product.category}
-              </p>
-
+              <strong>{product.price}</strong>
             </div>
-
-
-            {/* Preço do produto */}
-
-            <strong>
-              {product.price}
-            </strong>
-
-            </div>
-
           </article>
-
         ))}
-
       </section>
 
-
-      {/* =====================================================
-          PRÓXIMA CATEGORIA
-          ===================================================== */}
-
+      {/* NAVEGAÇÃO ORIGINAL */}
       <section className="nextCategory">
-
-        <span>
-          {nextLabel}
-        </span>
+        <span>{nextLabel}</span>
 
         <Link href={nextHref}>
-
           {nextCategory}
-
-          <strong>
-            ↗
-          </strong>
-
+          <strong>↗</strong>
         </Link>
-
       </section>
 
-
-      {/* =====================================================
-          FOOTER
-          ===================================================== */}
-
+      {/* RODAPÉ ORIGINAL */}
       <StoreFooter />
 
-      {/* =====================================================
-          NOTIFICAÇÃO - PRODUTO ADICIONADO À SACOLA
-          =====================================================
-          Só aparece quando cartMessage possuir uma mensagem.
-          ===================================================== */}
-
+      {/* NOTIFICAÇÃO DA SACOLA */}
       {cartMessage && (
+        <div
+          className="cartNotification"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cartNotificationIcon">
+            {cartError ? "!" : "✓"}
+          </span>
 
-      <div
-        className="cartNotification"
-        role="status"
-        aria-live="polite"
-      >
+          <div>
+            <strong>
+              {cartError
+                ? "NÃO FOI POSSÍVEL ADICIONAR"
+                : "PRODUTO ADICIONADO À SACOLA"}
+            </strong>
 
-        {/* Ícone de confirmação */}
+            <p>{cartMessage}</p>
 
-        <span className="cartNotificationIcon">
-          ✓
-        </span>
-
-
-        {/* Informações da compra */}
-
-        <div>
-
-          <strong>
-            PRODUTO ADICIONADO À SACOLA
-          </strong>
-
-          <p>
-            {cartMessage}
-          </p>
-
+            <button
+              type="button"
+              onClick={() => setCartMessage(null)}
+              aria-label="Fechar notificação"
+              style={{
+                border: 0,
+                background: "transparent",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              FECHAR
+            </button>
+          </div>
         </div>
-
-      </div>
-
       )}
-
     </main>
   );
 }
