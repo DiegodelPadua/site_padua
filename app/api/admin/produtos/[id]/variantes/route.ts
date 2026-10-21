@@ -87,11 +87,18 @@ export async function POST(
       );
     }
 
-    // Protege a operação contra requisições de outra origem.
-    const origem = request.headers.get("origin");
-    const origemEsperada = new URL(request.url).origin;
+    // Permite somente os domínios públicos da Pádua Culture.
+    // Evita falhas quando a Hostinger encaminha requisições
+    // por meio de um proxy reverso.
 
-    if (!origem || origem !== origemEsperada) {
+    const origensPermitidas = new Set([
+      "https://paduaculture.com.br",
+      "https://www.paduaculture.com.br",
+    ]);
+
+    const origem = request.headers.get("origin");
+
+    if (!origem || !origensPermitidas.has(origem)) {
       return NextResponse.json(
         { erro: "Origem não autorizada." },
         { status: 403 }
