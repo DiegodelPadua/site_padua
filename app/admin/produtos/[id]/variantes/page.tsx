@@ -75,6 +75,15 @@ export default function AdminVariantesPage() {
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
 
+  // Edição independente do formulário de cadastro.
+  const [varianteEditando, setVarianteEditando] = useState<number | null>(null);
+  const [editTamanho, setEditTamanho] = useState("");
+  const [editCor, setEditCor] = useState("");
+  const [editSku, setEditSku] = useState("");
+  const [editQuantidade, setEditQuantidade] = useState("0");
+  const [editAtiva, setEditAtiva] = useState(true);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
   /* =======================================================
      CONSULTAR VARIANTES
      ======================================================= */
@@ -189,6 +198,80 @@ export default function AdminVariantesPage() {
       );
     } finally {
       setSalvando(false);
+    }
+  }
+
+  /* =======================================================
+      EDITAR VARIANTE EXISTENTE
+      ======================================================= */
+
+  function iniciarEdicao(variante: Variante) {
+    setErro("");
+    setMensagem("");
+    setVarianteEditando(variante.id);
+    setEditTamanho(variante.tamanho);
+    setEditCor(variante.cor);
+    setEditSku(variante.sku || "");
+    setEditQuantidade(String(variante.quantidade));
+    setEditAtiva(variante.ativa);
+  }
+
+  function cancelarEdicao() {
+    if (salvandoEdicao) return;
+    setVarianteEditando(null);
+    setErro("");
+  }
+
+  async function salvarEdicao(evento: React.FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (varianteEditando === null || salvandoEdicao) return;
+
+    setErro("");
+    setMensagem("");
+
+    // Não permitir campo vazio, decimal, negativo ou valor acima do INT do MySQL.
+    const valor = editQuantidade.trim();
+    const quantidadeNumero = Number(valor);
+    if (!/^\d+$/.test(valor) || !Number.isSafeInteger(quantidadeNumero) ||
+        quantidadeNumero > 2147483647) {
+      setErro("Informe uma quantidade inteira entre 0 e 2147483647.");
+      return;
+    }
+    if (!editTamanho.trim() || !editCor.trim()) {
+      setErro("Tamanho e cor são obrigatórios.");
+      return;
+    }
+
+    try {
+      setSalvandoEdicao(true);
+      const resposta = await fetch(
+        `/api/admin/produtos/${produtoId}/variantes/${varianteEditando}`,
+        {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tamanho: editTamanho.trim(),
+            cor: editCor.trim(),
+            sku: editSku.trim() || null,
+            quantidade: quantidadeNumero,
+            ativa: editAtiva,
+          }),
+        }
+      );
+      const dados = await resposta.json();
+      if (!resposta.ok) {
+        throw new Error(dados.erro || "Não foi possível atualizar a variante.");
+      }
+
+      // O backend registra a movimentação de estoque; a tela apenas recarrega.
+      setVarianteEditando(null);
+      await carregarVariantes();
+      setMensagem(dados.mensagem || "Variante atualizada com sucesso!");
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : "Erro ao editar variante.");
+    } finally {
+      setSalvandoEdicao(false);
     }
   }
 
@@ -421,7 +504,7 @@ export default function AdminVariantesPage() {
 
             <button
               type="submit"
-              disabled={salvando || carregando}
+              disabled={salvando || salvandoEdicao || carregando}
               style={{
                 background: "#171717",
                 color: "#ffffff",
@@ -483,6 +566,7 @@ export default function AdminVariantesPage() {
                       "SKU",
                       "ESTOQUE",
                       "STATUS",
+                      "AÇÕES",
                     ].map((titulo) => (
                       <th
                         key={titulo}
@@ -532,6 +616,25 @@ export default function AdminVariantesPage() {
                             : "INATIVA"}
                         </strong>
                       </td>
+
+                      <td style={estiloCelula}>
+                        <button
+                          type="button"
+                          disabled={salvando || salvandoEdicao}
+                          onClick={() => iniciarEdicao(variante)}
+                          style={{
+                            padding: "10px 16px",
+                            background: "#171717",
+                            color: "#fff",
+                            border: "none",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            opacity: salvando || salvandoEdicao ? 0.5 : 1,
+                          }}
+                        >
+                          EDITAR
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -539,6 +642,79 @@ export default function AdminVariantesPage() {
             </div>
           )}
         </section>
+
+        {/* EDIÇÃO: preserva o cadastro e usa a API PATCH existente. */}
+        {varianteEditando !== null && (
+          <section
+            aria-label="Editar variante"
+            style={{ ...estiloCartao, marginTop: "32px" }}
+          >
+            <h2 style={{ fontSize: "26px", margin: "0 0 8px" }}>
+              Editar variante #{varianteEditando}
+            </h2>
+            <p style={{ color: "#666", marginBottom: "24px" }}>
+              Ajuste os dados e o estoque. Mudanças na quantidade serão
+              registradas no histórico de movimentações.
+            </p>
+            <form onSubmit={salvarEdicao}>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "20px",
+              }}>
+                <label>
+                  Tamanho
+                  <input style={estiloCampo} value={editTamanho}
+                    onChange={(e) => setEditTamanho(e.target.value)}
+                    maxLength={30} required disabled={salvandoEdicao} />
+                </label>
+                <label>
+                  Cor
+                  <input style={estiloCampo} value={editCor}
+                    onChange={(e) => setEditCor(e.target.value)}
+                    maxLength={60} required disabled={salvandoEdicao} />
+                </label>
+                <label>
+                  SKU (opcional)
+                  <input style={estiloCampo} value={editSku}
+                    onChange={(e) => setEditSku(e.target.value)}
+                    maxLength={100} disabled={salvandoEdicao} />
+                </label>
+                <label>
+                  Quantidade em estoque
+                  <input type="number" style={estiloCampo}
+                    value={editQuantidade}
+                    onChange={(e) => setEditQuantidade(e.target.value)}
+                    min={0} max={2147483647} step={1} required
+                    disabled={salvandoEdicao} />
+                </label>
+                <label>
+                  Status da variante
+                  <select style={estiloCampo} value={editAtiva ? "ativa" : "inativa"}
+                    onChange={(e) => setEditAtiva(e.target.value === "ativa")}
+                    disabled={salvandoEdicao}>
+                    <option value="ativa">ATIVA</option>
+                    <option value="inativa">INATIVA</option>
+                  </select>
+                </label>
+              </div>
+              {erro && <p role="alert" style={{ color: "#b91c1c", marginTop: 20 }}>{erro}</p>}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 24 }}>
+                <button type="submit" disabled={salvandoEdicao || salvando}
+                  style={{ background: "#171717", color: "#fff", border: "none",
+                    padding: "16px 28px", fontWeight: 700, cursor: "pointer" }}>
+                  {salvandoEdicao ? "SALVANDO..." : "SALVAR ALTERAÇÕES"}
+                </button>
+                <button type="button" onClick={cancelarEdicao}
+                  disabled={salvandoEdicao}
+                  style={{ background: "#fff", border: "1px solid #aaa",
+                    padding: "16px 28px", fontWeight: 700, cursor: "pointer" }}>
+                  CANCELAR
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
       </div>
     </main>
   );
