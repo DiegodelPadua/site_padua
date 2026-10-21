@@ -4,6 +4,18 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+/* =========================================================
+   PÁDUA CULTURE — GERENCIAMENTO DE PRODUTOS
+
+   Funcionalidades:
+   - Consultar categorias ativas.
+   - Consultar produtos cadastrados.
+   - Cadastrar novos produtos.
+   - Gerenciar variantes de cada produto.
+   - Acessar o gerenciamento de imagens.
+
+   ========================================================= */
+
 // Estruturas dos dados recebidos das APIs.
 type Categoria = {
   id: number;
@@ -40,7 +52,10 @@ export default function AdminProdutosPage() {
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
 
-  // Busca as categorias cadastradas.
+  /* =======================================================
+     CONSULTAR CATEGORIAS
+     ======================================================= */
+
   const carregarCategorias = useCallback(async () => {
     const resposta = await fetch("/api/admin/categorias", {
       cache: "no-store",
@@ -59,7 +74,10 @@ export default function AdminProdutosPage() {
     );
   }, []);
 
-  // Busca os produtos cadastrados.
+  /* =======================================================
+     CONSULTAR PRODUTOS
+     ======================================================= */
+
   const carregarProdutos = useCallback(async () => {
     const resposta = await fetch("/api/admin/produtos", {
       cache: "no-store",
@@ -74,11 +92,15 @@ export default function AdminProdutosPage() {
     setProdutos(dados.produtos || []);
   }, []);
 
-  // Carrega os dados ao abrir a página.
+  /* =======================================================
+     CARREGAMENTO INICIAL
+     ======================================================= */
+
   useEffect(() => {
     async function iniciar() {
       try {
         setCarregando(true);
+
         await Promise.all([
           carregarCategorias(),
           carregarProdutos(),
@@ -97,7 +119,10 @@ export default function AdminProdutosPage() {
     void iniciar();
   }, [carregarCategorias, carregarProdutos]);
 
-  // Converte valores digitados em reais para o formato da API.
+  /* =======================================================
+     NORMALIZAR PREÇO
+     ======================================================= */
+
   function normalizarPreco(valor: string): string | null {
     const texto = valor.trim().replace(/^R\$\s*/, "");
 
@@ -109,11 +134,15 @@ export default function AdminProdutosPage() {
     return texto.replace(",", ".");
   }
 
-  // Envia o cadastro do produto para o backend.
+  /* =======================================================
+     CADASTRAR PRODUTO
+     ======================================================= */
+
   async function cadastrarProduto(
     evento: React.FormEvent<HTMLFormElement>
   ) {
     evento.preventDefault();
+
     setErro("");
     setMensagem("");
 
@@ -132,6 +161,7 @@ export default function AdminProdutosPage() {
     try {
       setSalvando(true);
 
+      // Envia os dados para a API administrativa.
       const resposta = await fetch("/api/admin/produtos", {
         method: "POST",
         headers: {
@@ -161,7 +191,7 @@ export default function AdminProdutosPage() {
 
       setMensagem("Produto cadastrado com sucesso!");
 
-      // Atualiza a lista com os dados reais do banco.
+      // Atualiza a lista com os dados reais do MySQL.
       await carregarProdutos();
     } catch (error) {
       setErro(
@@ -174,13 +204,20 @@ export default function AdminProdutosPage() {
     }
   }
 
-  // Formatação de valores monetários.
+  /* =======================================================
+     FORMATAÇÃO DE PREÇOS
+     ======================================================= */
+
   function formatarMoeda(valor: string) {
     return Number(valor).toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL",
     });
   }
+
+  /* =======================================================
+     ESTILOS COMPARTILHADOS
+     ======================================================= */
 
   const estiloCampo: React.CSSProperties = {
     width: "100%",
@@ -190,6 +227,22 @@ export default function AdminProdutosPage() {
     fontSize: "16px",
     boxSizing: "border-box",
   };
+
+  // Estilo utilizado nos dois botões de gerenciamento.
+  const estiloAcao: React.CSSProperties = {
+    display: "inline-block",
+    padding: "12px 18px",
+    backgroundColor: "#171717",
+    color: "#ffffff",
+    textDecoration: "none",
+    fontSize: "13px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  };
+
+  /* =======================================================
+     INTERFACE
+     ======================================================= */
 
   return (
     <main
@@ -214,6 +267,10 @@ export default function AdminProdutosPage() {
       <p style={{ color: "#666", fontSize: "18px" }}>
         Gerencie o catálogo de roupas da Pádua Culture.
       </p>
+
+      {/* ===================================================
+          FORMULÁRIO DE CADASTRO
+          =================================================== */}
 
       <section
         style={{
@@ -257,8 +314,12 @@ export default function AdminProdutosPage() {
                 required
               >
                 <option value="">Selecione uma categoria</option>
+
                 {categorias.map((categoria) => (
-                  <option key={categoria.id} value={categoria.id}>
+                  <option
+                    key={categoria.id}
+                    value={categoria.id}
+                  >
                     {categoria.nome}
                   </option>
                 ))}
@@ -279,7 +340,10 @@ export default function AdminProdutosPage() {
           </div>
 
           <label
-            style={{ display: "block", marginTop: "20px" }}
+            style={{
+              display: "block",
+              marginTop: "20px",
+            }}
           >
             Descrição
             <textarea
@@ -296,14 +360,27 @@ export default function AdminProdutosPage() {
             />
           </label>
 
+          {/* Mensagens de erro e sucesso. */}
           {erro && (
-            <p role="alert" style={{ color: "#b91c1c", marginTop: "16px" }}>
+            <p
+              role="alert"
+              style={{
+                color: "#b91c1c",
+                marginTop: "16px",
+              }}
+            >
               {erro}
             </p>
           )}
 
           {mensagem && (
-            <p role="status" style={{ color: "#15803d", marginTop: "16px" }}>
+            <p
+              role="status"
+              style={{
+                color: "#15803d",
+                marginTop: "16px",
+              }}
+            >
               {mensagem}
             </p>
           )}
@@ -322,10 +399,16 @@ export default function AdminProdutosPage() {
               opacity: salvando ? 0.6 : 1,
             }}
           >
-            {salvando ? "SALVANDO..." : "CADASTRAR PRODUTO"}
+            {salvando
+              ? "SALVANDO..."
+              : "CADASTRAR PRODUTO"}
           </button>
         </form>
       </section>
+
+      {/* ===================================================
+          LISTAGEM DOS PRODUTOS
+          =================================================== */}
 
       <section
         style={{
@@ -353,14 +436,26 @@ export default function AdminProdutosPage() {
               }}
             >
               <thead>
-                <tr style={{ borderBottom: "2px solid #171717" }}>
-                  {["ID", "PRODUTO", "CATEGORIA", "PREÇO", "STATUS", "AÇÕES"].map(
-                    (titulo) => (
-                      <th key={titulo} style={{ padding: "14px" }}>
-                        {titulo}
-                      </th>
-                    )
-                  )}
+                <tr
+                  style={{
+                    borderBottom: "2px solid #171717",
+                  }}
+                >
+                  {[
+                    "ID",
+                    "PRODUTO",
+                    "CATEGORIA",
+                    "PREÇO",
+                    "STATUS",
+                    "AÇÕES",
+                  ].map((titulo) => (
+                    <th
+                      key={titulo}
+                      style={{ padding: "14px" }}
+                    >
+                      {titulo}
+                    </th>
+                  ))}
                 </tr>
               </thead>
 
@@ -368,38 +463,66 @@ export default function AdminProdutosPage() {
                 {produtos.map((produto) => (
                   <tr
                     key={produto.id}
-                    style={{ borderBottom: "1px solid #eee" }}
+                    style={{
+                      borderBottom: "1px solid #eee",
+                    }}
                   >
-                    <td style={{ padding: "16px" }}>{produto.id}</td>
-                    <td style={{ padding: "16px", fontWeight: 700 }}>
+                    <td style={{ padding: "16px" }}>
+                      {produto.id}
+                    </td>
+
+                    <td
+                      style={{
+                        padding: "16px",
+                        fontWeight: 700,
+                      }}
+                    >
                       {produto.nome}
                     </td>
+
                     <td style={{ padding: "16px" }}>
                       {produto.categoria.nome}
                     </td>
+
                     <td style={{ padding: "16px" }}>
                       {formatarMoeda(produto.preco)}
                     </td>
+
                     <td style={{ padding: "16px" }}>
-                      {produto.ativo ? "ATIVO" : "RASCUNHO"}
+                      {produto.ativo
+                        ? "ATIVO"
+                        : "RASCUNHO"}
                     </td>
-                    {/* Acesso às variantes do produto selecionado. */}
+
                     <td style={{ padding: "16px" }}>
-                    <Link
-                        href={`/admin/produtos/${produto.id}/variantes`}
+                      {/* Mantém o gerenciamento de variantes
+                          que já existe no projeto. */}
+
+                      <div
                         style={{
-                        display: "inline-block",
-                        padding: "12px 18px",
-                        backgroundColor: "#171717",
-                        color: "#ffffff",
-                        textDecoration: "none",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "10px",
+                          alignItems: "center",
                         }}
-                    >
-                        GERENCIAR VARIANTES
-                    </Link>
+                      >
+                        <Link
+                          href={`/admin/produtos/${produto.id}/variantes`}
+                          style={estiloAcao}
+                        >
+                          GERENCIAR VARIANTES
+                        </Link>
+
+                        {/* NOVO: acesso à página de imagens
+                            do produto selecionado. */}
+
+                        <Link
+                          href={`/admin/produtos/${produto.id}/imagens`}
+                          style={estiloAcao}
+                        >
+                          GERENCIAR IMAGENS
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
