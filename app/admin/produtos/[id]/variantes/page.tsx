@@ -2,10 +2,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 
-// Estrutura retornada pela API de variantes.
+/* =========================================================
+   PÁDUA CULTURE — VARIANTES E ESTOQUE
+
+   Preserva:
+   - Consulta das variantes pelo MySQL.
+   - Cadastro de tamanho, cor, SKU e quantidade.
+   - Indicadores de variantes e estoque.
+   - Listagem e status das variantes.
+
+   Utiliza a navegação global do AdminLayout.
+   ========================================================= */
+
 type Variante = {
   id: number;
   tamanho: string;
@@ -20,11 +31,35 @@ type Produto = {
   nome: string;
 };
 
+// Padrão visual compartilhado com Produtos e Categorias.
+const estiloCartao: React.CSSProperties = {
+  background: "#ffffff",
+  border: "1px solid #dddddd",
+  padding: "clamp(20px, 3vw, 32px)",
+};
+
+const estiloCampo: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "14px",
+  marginTop: "8px",
+  border: "1px solid #cccccc",
+  background: "#ffffff",
+  boxSizing: "border-box",
+  fontSize: "16px",
+};
+
+const estiloCelula: React.CSSProperties = {
+  padding: "16px 12px",
+  borderBottom: "1px solid #eeeeee",
+  fontSize: "14px",
+};
+
 export default function AdminVariantesPage() {
   const params = useParams<{ id: string }>();
   const produtoId = params.id;
 
-  // Dados do produto e de suas variantes.
+  // Dados reais do produto e das variantes.
   const [produto, setProduto] = useState<Produto | null>(null);
   const [variantes, setVariantes] = useState<Variante[]>([]);
 
@@ -40,11 +75,17 @@ export default function AdminVariantesPage() {
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
 
-  // Consulta as variantes cadastradas no banco.
+  /* =======================================================
+     CONSULTAR VARIANTES
+     ======================================================= */
+
   const carregarVariantes = useCallback(async () => {
     const resposta = await fetch(
       `/api/admin/produtos/${produtoId}/variantes`,
-      { cache: "no-store" }
+      {
+        cache: "no-store",
+        credentials: "same-origin",
+      }
     );
 
     const dados = await resposta.json();
@@ -59,11 +100,12 @@ export default function AdminVariantesPage() {
     setVariantes(dados.variantes);
   }, [produtoId]);
 
-  // Carrega os dados ao acessar a página.
+  // Consulta o banco ao acessar a página.
   useEffect(() => {
     async function iniciar() {
       try {
         setCarregando(true);
+        setErro("");
         await carregarVariantes();
       } catch (error) {
         setErro(
@@ -79,11 +121,15 @@ export default function AdminVariantesPage() {
     void iniciar();
   }, [carregarVariantes]);
 
-  // Cadastra uma nova variante.
+  /* =======================================================
+     CADASTRAR NOVA VARIANTE
+     ======================================================= */
+
   async function cadastrarVariante(
     evento: React.FormEvent<HTMLFormElement>
   ) {
     evento.preventDefault();
+
     setErro("");
     setMensagem("");
 
@@ -107,6 +153,7 @@ export default function AdminVariantesPage() {
           headers: {
             "Content-Type": "application/json",
           },
+          credentials: "same-origin",
           body: JSON.stringify({
             tamanho: tamanho.trim(),
             cor: cor.trim(),
@@ -124,16 +171,16 @@ export default function AdminVariantesPage() {
         );
       }
 
-      // Limpa o formulário após o cadastro.
+      // Limpa o formulário após cadastrar.
       setTamanho("");
       setCor("");
       setSku("");
       setQuantidade("0");
 
-      setMensagem("Variante cadastrada com sucesso!");
-
-      // Atualiza a tabela com os registros do MySQL.
+      // Atualiza a listagem com os registros do MySQL.
       await carregarVariantes();
+
+      setMensagem("Variante cadastrada com sucesso!");
     } catch (error) {
       setErro(
         error instanceof Error
@@ -145,16 +192,9 @@ export default function AdminVariantesPage() {
     }
   }
 
-  const estiloCampo: React.CSSProperties = {
-    display: "block",
-    width: "100%",
-    padding: "14px",
-    marginTop: "8px",
-    border: "1px solid #ccc",
-    background: "#fff",
-    boxSizing: "border-box",
-    fontSize: "16px",
-  };
+  /* =======================================================
+     INDICADORES
+     ======================================================= */
 
   const estoqueTotal = variantes.reduce(
     (total, variante) => total + variante.quantidade,
@@ -164,222 +204,342 @@ export default function AdminVariantesPage() {
   return (
     <main
       style={{
-        padding: "clamp(16px, 4vw, 40px)",
         minHeight: "100vh",
         background: "#f5f5f5",
         color: "#171717",
+        padding: "40px 24px 80px",
       }}
     >
-      <Link
-        href="/admin/produtos"
-        style={{ color: "#171717", textDecoration: "underline" }}
-      >
-        ← Voltar aos produtos
-      </Link>
-
-      <h1
-        style={{
-          fontSize: "clamp(32px, 5vw, 64px)",
-          fontWeight: 800,
-          marginTop: "24px",
-        }}
-      >
-        Variantes e estoque
-      </h1>
-
-      <p style={{ color: "#666", marginTop: "8px" }}>
-        {produto
-          ? `Produto: ${produto.nome}`
-          : "Carregando produto..."}
-      </p>
-
       <div
         style={{
-          display: "flex",
-          gap: "16px",
-          flexWrap: "wrap",
-          marginTop: "24px",
+          maxWidth: "1200px",
+          margin: "0 auto",
         }}
       >
-        <div style={{ background: "#fff", padding: "20px", flex: 1 }}>
-          <strong>VARIANTES</strong>
-          <p style={{ fontSize: "32px" }}>{variantes.length}</p>
-        </div>
+        {/* RETORNO AO PRODUTO */}
+        <Link
+          href="/admin/produtos"
+          style={{
+            color: "#555555",
+            textDecoration: "none",
+            fontSize: "12px",
+            fontWeight: 700,
+          }}
+        >
+          ← VOLTAR AOS PRODUTOS
+        </Link>
 
-        <div style={{ background: "#fff", padding: "20px", flex: 1 }}>
-          <strong>UNIDADES EM ESTOQUE</strong>
-          <p style={{ fontSize: "32px" }}>{estoqueTotal}</p>
-        </div>
-      </div>
-
-      <section
-        style={{
-          background: "#fff",
-          border: "1px solid #ddd",
-          padding: "clamp(16px, 3vw, 32px)",
-          marginTop: "32px",
-        }}
-      >
-        <h2 style={{ fontSize: "24px", marginBottom: "24px" }}>
-          Nova variante
-        </h2>
-
-        <form onSubmit={cadastrarVariante}>
-          <div
+        {/* CABEÇALHO DA PÁGINA */}
+        <header
+          style={{
+            marginTop: "32px",
+            marginBottom: "36px",
+          }}
+        >
+          <h1
             style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: "20px",
+              fontSize: "clamp(40px, 6vw, 76px)",
+              fontWeight: 800,
+              letterSpacing: "-3px",
+              lineHeight: 1,
+              margin: "0 0 12px",
             }}
           >
-            <label>
-              Tamanho
-              <input
-                style={estiloCampo}
-                value={tamanho}
-                onChange={(e) => setTamanho(e.target.value)}
-                placeholder="Ex.: M"
-                maxLength={30}
-                required
-              />
-            </label>
+            Variantes e estoque
+          </h1>
 
-            <label>
-              Cor
-              <input
-                style={estiloCampo}
-                value={cor}
-                onChange={(e) => setCor(e.target.value)}
-                placeholder="Ex.: Preto"
-                maxLength={60}
-                required
-              />
-            </label>
-
-            <label>
-              SKU
-              <input
-                style={estiloCampo}
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                placeholder="PAD-ESS-M-PRE"
-                maxLength={100}
-              />
-            </label>
-
-            <label>
-              Quantidade
-              <input
-                type="number"
-                style={estiloCampo}
-                value={quantidade}
-                onChange={(e) => setQuantidade(e.target.value)}
-                min={0}
-                step={1}
-                required
-              />
-            </label>
-          </div>
-
-          {erro && (
-            <p role="alert" style={{ color: "#b91c1c", marginTop: "20px" }}>
-              {erro}
-            </p>
-          )}
-
-          {mensagem && (
-            <p role="status" style={{ color: "#15803d", marginTop: "20px" }}>
-              {mensagem}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={salvando || carregando}
+          <p
             style={{
-              background: "#171717",
-              color: "#fff",
-              padding: "18px 30px",
-              border: "none",
-              marginTop: "24px",
-              fontWeight: 700,
-              cursor: "pointer",
+              color: "#666666",
+              fontSize: "18px",
+              margin: 0,
             }}
           >
-            {salvando ? "SALVANDO..." : "CADASTRAR VARIANTE"}
-          </button>
-        </form>
-      </section>
+            {produto
+              ? `Produto: ${produto.nome}`
+              : "Carregando produto..."}
+          </p>
+        </header>
 
-      <section
-        style={{
-          background: "#fff",
-          border: "1px solid #ddd",
-          padding: "clamp(16px, 3vw, 32px)",
-          marginTop: "32px",
-        }}
-      >
-        <h2 style={{ fontSize: "24px", marginBottom: "24px" }}>
-          Variantes cadastradas
-        </h2>
-
-        {carregando ? (
-          <p>Carregando...</p>
-        ) : variantes.length === 0 ? (
-          <p>Nenhuma variante cadastrada.</p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table
+        {/* INDICADORES */}
+        <section
+          aria-label="Indicadores de estoque"
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "20px",
+          }}
+        >
+          <div style={estiloCartao}>
+            <p
               style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                textAlign: "left",
+                fontSize: "12px",
+                margin: "0 0 8px",
               }}
             >
-              <thead>
-                <tr>
-                  {["TAMANHO", "COR", "SKU", "ESTOQUE", "STATUS"].map(
-                    (titulo) => (
+              VARIANTES
+            </p>
+
+            <strong
+              style={{
+                fontSize: "32px",
+                display: "block",
+              }}
+            >
+              {variantes.length}
+            </strong>
+          </div>
+
+          <div style={estiloCartao}>
+            <p
+              style={{
+                fontSize: "12px",
+                margin: "0 0 8px",
+              }}
+            >
+              UNIDADES EM ESTOQUE
+            </p>
+
+            <strong
+              style={{
+                fontSize: "32px",
+                display: "block",
+              }}
+            >
+              {estoqueTotal}
+            </strong>
+          </div>
+        </section>
+
+        {/* FORMULÁRIO DE CADASTRO */}
+        <section
+          style={{
+            ...estiloCartao,
+            marginTop: "32px",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: "26px",
+              margin: "0 0 24px",
+            }}
+          >
+            Nova variante
+          </h2>
+
+          <form onSubmit={cadastrarVariante}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "20px",
+              }}
+            >
+              <label>
+                Tamanho
+                <input
+                  style={estiloCampo}
+                  value={tamanho}
+                  onChange={(evento) =>
+                    setTamanho(evento.target.value)
+                  }
+                  placeholder="Ex.: M"
+                  maxLength={30}
+                  required
+                />
+              </label>
+
+              <label>
+                Cor
+                <input
+                  style={estiloCampo}
+                  value={cor}
+                  onChange={(evento) =>
+                    setCor(evento.target.value)
+                  }
+                  placeholder="Ex.: Preto"
+                  maxLength={60}
+                  required
+                />
+              </label>
+
+              <label>
+                SKU
+                <input
+                  style={estiloCampo}
+                  value={sku}
+                  onChange={(evento) =>
+                    setSku(evento.target.value)
+                  }
+                  placeholder="PAD-ESS-M-PRE"
+                  maxLength={100}
+                />
+              </label>
+
+              <label>
+                Quantidade
+                <input
+                  type="number"
+                  style={estiloCampo}
+                  value={quantidade}
+                  onChange={(evento) =>
+                    setQuantidade(evento.target.value)
+                  }
+                  min={0}
+                  step={1}
+                  required
+                />
+              </label>
+            </div>
+
+            {/* MENSAGENS */}
+            {erro && (
+              <p
+                role="alert"
+                style={{
+                  color: "#b91c1c",
+                  marginTop: "20px",
+                }}
+              >
+                {erro}
+              </p>
+            )}
+
+            {mensagem && (
+              <p
+                role="status"
+                style={{
+                  color: "#15803d",
+                  marginTop: "20px",
+                }}
+              >
+                {mensagem}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={salvando || carregando}
+              style={{
+                background: "#171717",
+                color: "#ffffff",
+                padding: "16px 32px",
+                border: "none",
+                marginTop: "24px",
+                fontWeight: 700,
+                cursor:
+                  salvando || carregando
+                    ? "wait"
+                    : "pointer",
+                opacity:
+                  salvando || carregando ? 0.6 : 1,
+              }}
+            >
+              {salvando
+                ? "SALVANDO..."
+                : "CADASTRAR VARIANTE"}
+            </button>
+          </form>
+        </section>
+
+        {/* TABELA DE VARIANTES */}
+        <section
+          style={{
+            ...estiloCartao,
+            marginTop: "32px",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: "26px",
+              margin: "0 0 24px",
+            }}
+          >
+            Variantes cadastradas ({variantes.length})
+          </h2>
+
+          {carregando ? (
+            <p>Carregando variantes...</p>
+          ) : variantes.length === 0 ? (
+            <p style={{ color: "#666666" }}>
+              Nenhuma variante cadastrada.
+            </p>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  textAlign: "left",
+                }}
+              >
+                <thead>
+                  <tr>
+                    {[
+                      "TAMANHO",
+                      "COR",
+                      "SKU",
+                      "ESTOQUE",
+                      "STATUS",
+                    ].map((titulo) => (
                       <th
                         key={titulo}
                         style={{
-                          padding: "14px",
-                          borderBottom: "2px solid #171717",
+                          padding: "14px 12px",
+                          borderBottom:
+                            "2px solid #171717",
+                          fontSize: "12px",
                         }}
                       >
                         {titulo}
                       </th>
-                    )
-                  )}
-                </tr>
-              </thead>
-
-              <tbody>
-                {variantes.map((variante) => (
-                  <tr key={variante.id}>
-                    <td style={{ padding: "14px" }}>
-                      {variante.tamanho}
-                    </td>
-                    <td style={{ padding: "14px" }}>
-                      {variante.cor}
-                    </td>
-                    <td style={{ padding: "14px" }}>
-                      {variante.sku || "—"}
-                    </td>
-                    <td style={{ padding: "14px" }}>
-                      {variante.quantidade}
-                    </td>
-                    <td style={{ padding: "14px" }}>
-                      {variante.ativa ? "ATIVA" : "INATIVA"}
-                    </td>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+
+                <tbody>
+                  {variantes.map((variante) => (
+                    <tr key={variante.id}>
+                      <td style={estiloCelula}>
+                        {variante.tamanho}
+                      </td>
+
+                      <td style={estiloCelula}>
+                        {variante.cor}
+                      </td>
+
+                      <td style={estiloCelula}>
+                        {variante.sku || "—"}
+                      </td>
+
+                      <td style={estiloCelula}>
+                        {variante.quantidade}
+                      </td>
+
+                      <td style={estiloCelula}>
+                        <strong
+                          style={{
+                            fontSize: "12px",
+                            color: variante.ativa
+                              ? "#237a36"
+                              : "#b42318",
+                          }}
+                        >
+                          {variante.ativa
+                            ? "ATIVA"
+                            : "INATIVA"}
+                        </strong>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   );
 }
