@@ -381,6 +381,19 @@ async function salvarNovaSenha(
     );
   }
 
+  /* =========================================================
+   IDENTIFICAÇÃO DO PERFIL ADMINISTRATIVO
+
+   O perfil é recebido da API /api/auth/me.
+
+   Esta condição controla apenas a exibição do botão.
+   A autorização real permanece protegida no servidor
+   pelo app/admin/layout.tsx.
+   ========================================================= */
+
+  const ehAdministrador =
+  usuario.perfil?.trim().toUpperCase() === "ADMIN";
+
   return (
     <main className="accountPage">
       <header className="accountHeader">
@@ -411,6 +424,34 @@ async function salvarNovaSenha(
         </div>
 
         <div className="accountDetails">
+
+          {/* =====================================================
+              ACESSO EXCLUSIVO AO PAINEL ADMINISTRATIVO
+              ===================================================== */}
+
+          {ehAdministrador && (
+            <section className="accountAdminSection">
+              <div className="accountSectionTitle">
+                <span>ACESSO ADMINISTRATIVO</span>
+                <h2>Gerencie a Pádua.</h2>
+              </div>
+
+              <p className="accountAdminDescription">
+                Acesse o gerenciamento de produtos, categorias,
+                imagens e estoque da Pádua Culture.
+              </p>
+
+              <Link
+                href="/admin"
+                className="accountAdminButton"
+              >
+                <span>ACESSAR PAINEL ADMINISTRATIVO</span>
+                <span aria-hidden="true">↗</span>
+              </Link>
+            </section>
+          )}
+
+          {/* DADOS CADASTRAIS EXISTENTES */}
           <div className="accountSectionTitle">
             <span>DADOS CADASTRAIS</span>
             <h2>Suas informações.</h2>

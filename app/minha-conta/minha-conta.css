@@ -272,3 +272,70 @@
 .accountSecurity {
   margin-top: 55px;
 }
+
+/* =========================================================
+   PÁDUA CULTURE — ACESSO ADMINISTRATIVO
+
+   Exibido somente quando o usuário possui perfil ADMIN.
+   Mantém a identidade visual da página Minha Conta.
+   ========================================================= */
+
+.accountAdminSection {
+  margin-bottom: 48px;
+  padding-bottom: 40px;
+  border-bottom: 1px solid #d1cec6;
+}
+
+.accountAdminDescription {
+  margin: 16px 0 24px;
+  color: #555;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.accountAdminButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  width: 100%;
+  padding: 20px 24px;
+
+  background: #111;
+  color: #fff;
+
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+
+  box-sizing: border-box;
+  transition: background-color 0.2s ease;
+}
+
+.accountAdminButton:hover {
+  background: #333;
+}
+
+.accountAdminButton:focus-visible {
+  outline: 2px solid #111;
+  outline-offset: 4px;
+}
+
+.accountAdminButton span:last-child {
+  font-size: 18px;
+  font-weight: 400;
+}
+
+@media (max-width: 600px) {
+  .accountAdminSection {
+    margin-bottom: 36px;
+    padding-bottom: 32px;
+  }
+
+  .accountAdminButton {
+    padding: 18px;
+    font-size: 10px;
+  }
+}
