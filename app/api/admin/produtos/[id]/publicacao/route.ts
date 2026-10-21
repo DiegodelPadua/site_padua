@@ -36,15 +36,26 @@ export async function PATCH(
       );
     }
 
-    // Confere a origem da requisição.
-    const origem = request.headers.get("origin");
-    const origemEsperada = new URL(request.url).origin;
+ 
+    /* =========================================================
+    VALIDAR ORIGEM DA REQUISIÇÃO
 
-    if (!origem || origem !== origemEsperada) {
-      return NextResponse.json(
+    Usa o domínio público autorizado, sem depender
+    do endereço interno utilizado pelo proxy da Hostinger.
+    ========================================================= */
+
+    const origem = request.headers.get("origin");
+
+    const origensPermitidas = new Set([
+    "https://paduaculture.com.br",
+    "https://www.paduaculture.com.br",
+    ]);
+
+    if (!origem || !origensPermitidas.has(origem)) {
+    return NextResponse.json(
         { erro: "Origem não autorizada." },
         { status: 403 }
-      );
+    );
     }
 
     // Valida o identificador do produto.
