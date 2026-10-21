@@ -14,7 +14,7 @@ export default function Shorts() {
     <CategoriaDinamica
       number="03"
       title="SHORTS"
-      categorySlug="shorts"
+      categorySlug="short"
       nextCategory="BONÉS"
       nextHref="/loja/bones"
     />

@@ -49,6 +49,10 @@ export default function AdminProdutosPage() {
   // Controle da interface.
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  // Identifica o produto cuja publicação está sendo alterada.
+  const [publicandoId, setPublicandoId] = useState<number | null>(
+    null
+  );
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
 
@@ -203,6 +207,66 @@ export default function AdminProdutosPage() {
       setSalvando(false);
     }
   }
+
+  
+/* =========================================================
+   PUBLICAR / RETORNAR PARA RASCUNHO
+   ========================================================= */
+
+  async function alterarPublicacao(produto: Produto) {
+    const novoStatus = !produto.ativo;
+
+    // Confirma a alteração antes de enviar ao servidor.
+    const confirmado = window.confirm(
+      novoStatus
+        ? `Deseja publicar "${produto.nome}" na loja?`
+        : `Deseja retirar "${produto.nome}" da loja?`
+    );
+
+    if (!confirmado) return;
+
+    setErro("");
+    setMensagem("");
+    setPublicandoId(produto.id);
+
+    try {
+      const resposta = await fetch(
+        `/api/admin/produtos/${produto.id}/publicacao`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ativo: novoStatus,
+          }),
+        }
+      );
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(
+          dados.erro || "Não foi possível alterar a publicação."
+        );
+      }
+
+      // Reconsulta os produtos para refletir o MySQL.
+      await carregarProdutos();
+
+      setMensagem(dados.mensagem);
+    } catch (error) {
+      setErro(
+        error instanceof Error
+          ? error.message
+          : "Erro inesperado ao alterar publicação."
+      );
+    } finally {
+      setPublicandoId(null);
+    }
+  }
+
+
 
   /* =======================================================
      FORMATAÇÃO DE PREÇOS
@@ -522,6 +586,34 @@ export default function AdminProdutosPage() {
                         >
                           GERENCIAR IMAGENS
                         </Link>
+                        
+                        {/* PUBLICAÇÃO DO PRODUTO */}
+                        <button
+                          type="button"
+                          disabled={publicandoId !== null}
+                          onClick={() => alterarPublicacao(produto)}
+                          style={{
+                            ...estiloAcao,
+                            border: "none",
+                            cursor:
+                              publicandoId !== null ? "wait" : "pointer",
+                            backgroundColor: produto.ativo
+                              ? "#666666"
+                              : "#171717",
+                            opacity:
+                              publicandoId !== null &&
+                              publicandoId !== produto.id
+                                ? 0.5
+                                : 1,
+                          }}
+                        >
+                          {publicandoId === produto.id
+                            ? "SALVANDO..."
+                            : produto.ativo
+                              ? "VOLTAR PARA RASCUNHO"
+                              : "PUBLICAR"}
+                        </button>
+
                       </div>
                     </td>
                   </tr>

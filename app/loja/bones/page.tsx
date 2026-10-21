@@ -14,7 +14,7 @@ export default function Bones() {
     <CategoriaDinamica
       number="04"
       title="BONÉS"
-      categorySlug="bones"
+      categorySlug="bone"
       nextCategory="UPCYCLING"
       nextHref="/loja/upcycling"
     />

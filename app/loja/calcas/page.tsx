@@ -14,7 +14,7 @@ export default function Calcas() {
     <CategoriaDinamica
       number="02"
       title="CALÇAS"
-      categorySlug="calcas"
+      categorySlug="calca"
       nextCategory="SHORTS"
       nextHref="/loja/shorts"
     />
