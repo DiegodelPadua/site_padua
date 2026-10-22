@@ -102,6 +102,10 @@ export default function ProductDetails({ produto }: Props) {
   );
   const [cartError, setCartError] = useState(false);
 
+  // Controla a consulta do estoque no MySQL da Hostinger.
+  // true = consultando; false = consulta encerrada.
+  const [consultandoEstoque, setConsultandoEstoque] = useState(false);
+
   // Somente tamanhos cadastrados para a cor selecionada.
   const variantesDaCor = produto.variantes.filter(
     (v) => v.cor === selectedColor
@@ -126,55 +130,111 @@ export default function ProductDetails({ produto }: Props) {
      ADICIONAR À SACOLA
      ======================================================= */
 
-  function addToCart() {
+
+  async function addToCart() {
     if (!selectedColor || !selectedSize) {
       setCartError(true);
       setCartMessage("Selecione uma cor e um tamanho.");
       return;
     }
 
-    if (
-      !varianteSelecionada ||
-      !varianteSelecionada.ativa ||
-      varianteSelecionada.quantidade <= 0
-    ) {
+    if (!varianteSelecionada || !varianteSelecionada.ativa) {
       setCartError(true);
       setCartMessage("Esta variante está indisponível.");
       return;
     }
 
-    const cartId = `variante-${varianteSelecionada.id}`;
+    // Impede duas consultas simultâneas pelo mesmo botão.
+    if (consultandoEstoque) return;
 
-    const quantidadeNaSacola =
-      items.find((item) => item.id === cartId)?.quantity ?? 0;
+    try {
+      setConsultandoEstoque(true);
+      setCartMessage(null);
 
-    if (
-      quantidadeNaSacola >= varianteSelecionada.quantidade
-    ) {
+      // Consulta o estoque atual no MySQL da Hostinger.
+      const resposta = await fetch(
+        `/api/variantes/${varianteSelecionada.id}/disponibilidade`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      if (!resposta.ok) {
+        throw new Error(
+          "Não foi possível confirmar a disponibilidade."
+        );
+      }
+
+      const dados: {
+        varianteId: number;
+        quantidade: number;
+        disponivel: boolean;
+        tamanho: string;
+        cor: string;
+      } = await resposta.json();
+
+      // Confere se a resposta corresponde à seleção.
+      if (
+        dados.varianteId !== varianteSelecionada.id ||
+        dados.tamanho !== selectedSize ||
+        dados.cor !== selectedColor
+      ) {
+        throw new Error("A variante selecionada foi alterada.");
+      }
+
+      const cartId = `variante-${dados.varianteId}`;
+
+      const quantidadeNaSacola =
+        items.find((item) => item.id === cartId)?.quantity ?? 0;
+
+      if (
+        !dados.disponivel ||
+        quantidadeNaSacola + 1 > dados.quantidade
+      ) {
+        setCartError(true);
+        setCartMessage(
+          "Não há estoque suficiente para adicionar esta peça."
+        );
+        return;
+      }
+
+      const adicionado = addItem({
+        id: cartId,
+        variantId: dados.varianteId,
+        name: produto.nome,
+        price: produto.preco,
+        image: produto.imagens[0]?.url ?? "",
+        size: selectedSize,
+        color: selectedColor,
+        quantity: 1,
+        stock: dados.quantidade,
+      });
+
+      if (!adicionado) {
+        setCartError(true);
+        setCartMessage(
+          "Não foi possível adicionar a quantidade solicitada."
+        );
+        return;
+      }
+
+      setCartError(false);
+      setCartMessage(
+        `${produto.nome} — ${selectedColor} / ${selectedSize}`
+      );
+    } catch (error) {
       setCartError(true);
       setCartMessage(
-        "Você já selecionou a quantidade disponível em estoque."
+        error instanceof Error
+          ? error.message
+          : "Erro ao consultar o estoque."
       );
-      return;
+    } finally {
+      setConsultandoEstoque(false);
     }
-
-    addItem({
-      id: cartId,
-      variantId: varianteSelecionada.id,
-      name: produto.nome,
-      price: produto.preco,
-      image: produto.imagens[0]?.url ?? "",
-      size: selectedSize,
-      color: selectedColor,
-      quantity: 1,
-      stock: varianteSelecionada.quantidade,
-    });
-
-    setCartError(false);
-    setCartMessage(
-      `${produto.nome} — ${selectedColor} / ${selectedSize}`
-    );
   }
+
 
   return (
     <>
@@ -321,20 +381,22 @@ export default function ProductDetails({ produto }: Props) {
             </div>
 
             {/* BOTÃO ORIGINAL */}
-            <button
-              type="button"
-              className="addToCart"
-              onClick={addToCart}
-              disabled={!disponivel}
-            >
-              <span>
-                {disponivel
-                  ? "ADICIONAR À SACOLA"
-                  : "PRODUTO ESGOTADO"}
-              </span>
+              <button
+                type="button"
+                className="addToCart"
+                onClick={addToCart}
+                disabled={!disponivel || consultandoEstoque}
+              >
+                <span>
+                  {consultandoEstoque
+                    ? "CONSULTANDO ESTOQUE..."
+                    : disponivel
+                      ? "ADICIONAR À SACOLA"
+                      : "PRODUTO ESGOTADO"}
+                </span>
 
-              <span>→</span>
-            </button>
+                <span>→</span>
+              </button>
 
             {/* DESCRIÇÃO */}
             <div className="productDescription">
