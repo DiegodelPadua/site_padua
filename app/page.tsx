@@ -22,41 +22,15 @@ import "./componentes/loja/store.css";
 
 
 
-/* =========================================================
-   PRODUTOS
-   =========================================================
-   Produtos exibidos atualmente na seção "NEW DROP".
-
-   ATENÇÃO:
-   Estes dados são temporários.
-
-   Futuramente eles serão substituídos pelos produtos
-   cadastrados no banco de dados.
-   ========================================================= */
-
-const products = [
-  {
-    name: "Pádua Globe",
-    slug: "padua-globe",
-    category: "Camiseta",
-    price: "R$ 149,90",
-    image: "/images/globe.jpg",
-  },
-  {
-    name: "Pádua 1980",
-    slug: "padua-1980",
-    category: "Camiseta",
-    price: "R$ 159,90",
-    image: "/images/1980.jpg",
-  },
-  {
-    name: "Pádua Essential",
-    slug: "padua-essential",
-    category: "Camiseta",
-    price: "R$ 129,90",
-    image: "/images/essential.jpg",
-  },
-];
+/* Produtos reais retornados pela API pública da loja. */
+type ProdutoHome = {
+  id: number;
+  name: string;
+  slug: string;
+  category: string;
+  price: string;
+  image: string;
+};
 
 /* =========================================================
    FUNÇÃO PRINCIPAL - HOME
@@ -66,7 +40,7 @@ const products = [
 
 export default function Home() {
 
-  const { cartCount, addItem } = useCart();
+  const { cartCount } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   
 /* =========================================================
@@ -121,69 +95,39 @@ useEffect(() => {
   return () => controller.abort();
 }, []);
 
-  function handleQuickAdd(
-    product: (typeof products)[number],
-    size: string,
-    color: string
-  ) {
-    const price = Number(
-      product.price
-        .replace("R$", "")
-        .replace(".", "")
-        .replace(",", ".")
-        .trim()
-    );
-  
-    addItem({
-      id: `${product.slug}-${color}-${size}`,
-      name: product.name,
-      price: price,
-      image: product.image,
-      size: size,
-      color: color,
-      quantity: 1,
-    });
+  // Produtos publicados no MySQL da Hostinger, sem lista fixa.
+  const [products, setProducts] = useState<ProdutoHome[]>([]);
+  const [carregandoProdutos, setCarregandoProdutos] = useState(true);
+  const [erroProdutos, setErroProdutos] = useState("");
 
-    /* =======================================================
-        EXIBE A CONFIRMAÇÃO PARA O CLIENTE
-        =======================================================
-        Exemplo:
-        Pádua Globe — PRETO / G
-        ======================================================= */
+  useEffect(() => {
+    const controller = new AbortController();
 
-      setCartMessage(
-        `${product.name} — ${color} / ${size}`
-      );
-
-
-      /* Fecha o painel de compra rápida */
-
-      setQuickAddOpen(null);
-
-
-      /* =======================================================
-        REMOVE A NOTIFICAÇÃO APÓS 3 SEGUNDOS
-        ======================================================= */
-
-      setTimeout(() => {
-        setCartMessage(null);
-      }, 3000);
-    
-      setQuickAddOpen(null);
-      setCartOpen(true);
+    async function carregarProdutos() {
+      try {
+        const resposta = await fetch("/api/produtos/novidades", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!resposta.ok) throw new Error("Falha ao carregar novidades.");
+        const dados: { produtos?: ProdutoHome[] } = await resposta.json();
+        if (!controller.signal.aborted) {
+          setProducts(Array.isArray(dados.produtos) ? dados.produtos : []);
+          setErroProdutos("");
+        }
+      } catch (erro) {
+        if (!controller.signal.aborted) {
+          setErroProdutos("Não foi possível carregar as novidades agora.");
+          console.error("[HOME NOVIDADES]", erro);
+        }
+      } finally {
+        if (!controller.signal.aborted) setCarregandoProdutos(false);
+      }
     }
 
-  const [quickAddOpen, setQuickAddOpen] = useState<string | null>(null);
-  const [quickColor, setQuickColor] = useState("OFF-WHITE");
-
-  /* =========================================================
-   NOTIFICAÇÃO - PRODUTO ADICIONADO
-   =========================================================
-   Guarda a mensagem exibida quando um produto é
-   adicionado à sacola através do botão "+".
-   ========================================================= */
-
-  const [cartMessage, setCartMessage] = useState<string | null>(null);
+    void carregarProdutos();
+    return () => controller.abort();
+  }, []);
 
   return (
 
@@ -383,6 +327,11 @@ useEffect(() => {
             automaticamente um card para cada produto.
             =================================================== */}
 
+        {carregandoProdutos && <p>Carregando novidades...</p>}
+        {erroProdutos && <p role="alert">{erroProdutos}</p>}
+        {!carregandoProdutos && !erroProdutos && products.length === 0 && (
+          <p>Em breve, novas peças da Pádua Culture.</p>
+        )}
         <div className="products">
 
           {products.map((product) => (
@@ -411,23 +360,9 @@ useEffect(() => {
                     alt={product.name}
                   />
 
-                  <button
-                    type="button"
-                    className="quickAdd"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-
-                      setQuickAddOpen(
-                        quickAddOpen === product.slug
-                          ? null
-                          : product.slug
-                      );
-                    }}
-                  >
-                    {quickAddOpen === product.slug ? "×" : "+"}
-                  </button>
-
+                  {/* A escolha de variante e a validação do estoque
+                      são feitas na página real do produto. */}
+                  <span className="quickAdd" aria-hidden="true">+</span>
                 </div>
 
 
@@ -456,46 +391,7 @@ useEffect(() => {
 
               </Link>
 
-              {quickAddOpen === product.slug && (
-                <div className="quickAddPanel">
-
-                  <span>SELECIONE A COR</span>
-
-                  <div className="quickColors">
-                    {["OFF-WHITE", "PRETO"].map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        className={quickColor === color ? "active" : ""}
-                        onClick={() => setQuickColor(color)}
-                      >
-                        {color}
-                      </button>
-                    ))}
-                  </div>
-
-                  <span className="quickSizeTitle">
-                    SELECIONE O TAMANHO
-                  </span>
-
-                  <div className="quickSizes">
-                    {["P", "M", "G", "GG"].map((size) => (
-                      <button
-                        key={size}
-                        type="button"
-                        onClick={() =>
-                          handleQuickAdd(product, size, quickColor)
-                        }
-                      >
-                        {size}
-                      </button>
-                    ))}
-                  </div>
-
-                </div>
-              )}
-
-            </article>
+              </article>
 
           ))}
 
@@ -826,46 +722,7 @@ useEffect(() => {
         </div>
 
       </footer>
-      {/* =====================================================
-          NOTIFICAÇÃO - PRODUTO ADICIONADO À SACOLA
-          =====================================================
-          Aparece durante 3 segundos após utilizar o botão "+".
-          ===================================================== */}
-
-      {cartMessage && (
-
-      <div
-        className="cartNotification"
-        role="status"
-        aria-live="polite"
-      >
-
-        {/* Ícone de confirmação */}
-
-        <span className="cartNotificationIcon">
-          ✓
-        </span>
-
-
-        {/* Informações do produto adicionado */}
-
-        <div>
-
-          <strong>
-            PRODUTO ADICIONADO À SACOLA
-          </strong>
-
-          <p>
-            {cartMessage}
-          </p>
-
-        </div>
-
-      </div>
-
-      )}
-
-      <CartDrawer
+   <CartDrawer
       isOpen={cartOpen}
       onClose={() => setCartOpen(false)}
       />
