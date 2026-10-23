@@ -5,8 +5,23 @@
    ========================================================= */
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useCart } from "../context/CartContext";
 import "./checkout.css";
+
+
+/* =========================================================
+   DADOS DO CLIENTE AUTENTICADO
+   ========================================================= */
+
+type UsuarioCheckout = {
+  id: number;
+  nome: string;
+  sobrenome: string;
+  email: string;
+  telefone?: string | null;
+};
+
 
 
 /* =========================================================
@@ -35,6 +50,59 @@ export default function Checkout() {
 
   const { items } = useCart();
 
+  /* =========================================================
+   IDENTIFICAÇÃO DO CLIENTE
+   ========================================================= */
+
+  const [usuario, setUsuario] = useState<UsuarioCheckout | null>(null);
+  const [carregandoUsuario, setCarregandoUsuario] = useState(true);
+  const [erroUsuario, setErroUsuario] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function consultarCliente() {
+      try {
+        const response = await fetch("/api/auth/me", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (response.status === 401) {
+          setUsuario(null);
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Não foi possível consultar sua conta.");
+        }
+
+        const dados = await response.json();
+
+        if (!controller.signal.aborted) {
+          setUsuario(
+            dados.autenticado && dados.usuario
+              ? dados.usuario
+              : null
+          );
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setErroUsuario("Não foi possível carregar seus dados.");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCarregandoUsuario(false);
+        }
+      }
+    }
+
+    consultarCliente();
+
+    return () => controller.abort();
+  }, []);
 
   /* =======================================================
      SUBTOTAL
@@ -107,6 +175,26 @@ export default function Checkout() {
               <span>01</span>
               <h2>CONTATO</h2>
             </div>
+            {/* =====================================================
+                ESTADO DA IDENTIFICAÇÃO DO CLIENTE
+                ===================================================== */}
+
+            {carregandoUsuario && (
+              <p role="status">CARREGANDO SEUS DADOS...</p>
+            )}
+
+            {erroUsuario && (
+              <p role="alert">{erroUsuario}</p>
+            )}
+
+            {!carregandoUsuario && !erroUsuario && !usuario && (
+              <p>
+                PARA FINALIZAR SUA COMPRA,{" "}
+                <Link href="/login">
+                  ENTRE NA SUA CONTA
+                </Link>.
+              </p>
+            )}
 
             <div className="checkoutFields">
 
@@ -117,6 +205,9 @@ export default function Checkout() {
                   type="email"
                   name="email"
                   placeholder="seu@email.com"
+                  value={usuario?.email ?? ""}
+                  readOnly
+                  autoComplete="email"
                 />
               </label>
 
@@ -127,6 +218,9 @@ export default function Checkout() {
                   type="tel"
                   name="telefone"
                   placeholder="(11) 99999-9999"
+                  value={usuario?.telefone ?? ""}
+                  readOnly
+                  autoComplete="tel"
                 />
               </label>
 
@@ -155,6 +249,9 @@ export default function Checkout() {
                   type="text"
                   name="nome"
                   placeholder="Nome"
+                  value={usuario?.nome ?? ""}
+                  readOnly
+                  autoComplete="given-name"
                 />
               </label>
 
@@ -166,6 +263,9 @@ export default function Checkout() {
                   type="text"
                   name="sobrenome"
                   placeholder="Sobrenome"
+                  value={usuario?.sobrenome ?? ""}
+                  readOnly
+                  autoComplete="family-name"
                 />
               </label>
 
