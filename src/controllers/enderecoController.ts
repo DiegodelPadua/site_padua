@@ -49,15 +49,33 @@ export async function cadastrarEnderecoController(
       );
     }
 
-    // Proteção básica contra requisições de outra origem.
-    const origem = request.headers.get("origin");
+  /* =========================================================
+    VALIDAÇÃO DE ORIGEM - PÁDUA CULTURE
+    =========================================================
+    Permite requisições POST realizadas pelo próprio site.
 
-    if (!origem || origem !== new URL(request.url).origin) {
-      return NextResponse.json(
-        { erro: "Origem da requisição não autorizada." },
-        { status: 403 }
-      );
-    }
+    A comparação utiliza uma origem pública confiável,
+    evitando depender do endereço interno do servidor
+    utilizado pela hospedagem.
+    ========================================================= */
+
+  // Obtém a origem informada pelo navegador.
+  const origem = request.headers.get("origin");
+
+  // Lista explícita de origens autorizadas.
+  // Não utilizar curingas nem aceitar qualquer domínio.
+  const origensPermitidas = new Set([
+    "https://paduaculture.com.br",
+    "https://www.paduaculture.com.br",
+  ]);
+
+  // Rejeita requisições sem Origin ou de outros domínios.
+  if (!origem || !origensPermitidas.has(origem)) {
+    return NextResponse.json(
+      { erro: "Origem da requisição não autorizada." },
+      { status: 403 }
+    );
+  }
 
     let dados: unknown;
 
