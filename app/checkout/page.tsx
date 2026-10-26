@@ -88,22 +88,25 @@ export default function Checkout() {
     estado: "",
   });
 
-  /* =========================================================
+/* =========================================================
    CONTROLE DE EDIÇÃO DO ENDEREÇO
    =========================================================
    Identifica alterações realizadas pelo cliente enquanto
    a consulta de endereços está em andamento.
    ========================================================= */
 
-  const versaoEdicaoEndereco = useRef(0);
+// Controla a versão atual das alterações no formulário.
+const versaoEdicaoEndereco = useRef(0);
 
-  // Deve ser chamada sempre que o cliente modificar
-  // manualmente algum campo do endereço.
-  function registrarEdicaoEndereco() {
-    versaoEdicaoEndereco.current += 1;
-    // Registra a edição para evitar preenchimento automático atrasado.
-    registrarEdicaoEndereco();
-  }
+// Executada sempre que o cliente modificar um campo.
+function registrarEdicaoEndereco() {
+
+  // Incrementa a versão da edição.
+  versaoEdicaoEndereco.current += 1;
+
+  // Desmarca o endereço cadastrado anteriormente selecionado.
+  setEnderecoSelecionadoId(null);
+}
 
   const [usuario, setUsuario] = useState<UsuarioCheckout | null>(null);
   const [carregandoUsuario, setCarregandoUsuario] = useState(true);
