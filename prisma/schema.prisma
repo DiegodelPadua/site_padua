@@ -46,6 +46,11 @@ model Produto {
   categoriaId      Int
   ativo            Boolean           @default(false)
   destaque         Boolean           @default(false)
+
+  // Peso individual do produto em gramas.
+  // Opcional para preservar os produtos existentes.
+  
+  pesoGramas       Int?
   criadoEm         DateTime          @default(now())
   atualizadoEm     DateTime          @updatedAt
   imagens          ImagemProduto[]
