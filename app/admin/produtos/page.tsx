@@ -1,49 +1,38 @@
-
 "use client";
-
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-
 /* =========================================================
    PÁDUA CULTURE — GERENCIAMENTO DE PRODUTOS
-
    Funcionalidades:
    - Consultar categorias ativas.
    - Consultar produtos cadastrados.
    - Cadastrar novos produtos.
    - Gerenciar variantes de cada produto.
    - Acessar o gerenciamento de imagens.
-
    ========================================================= */
-
 // Estruturas dos dados recebidos das APIs.
 type Categoria = {
   id: number;
   nome: string;
   ativa: boolean;
 };
-
 type Produto = {
   id: number;
   nome: string;
   descricao: string | null;
   preco: string;
-
   // Peso individual armazenado no MySQL.
   pesoGramas: number | null;
-
   ativo: boolean;
   categoria: {
     id: number;
     nome: string;
   };
 };
-
 export default function AdminProdutosPage() {
   // Dados carregados do MySQL por meio das APIs.
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
-
   // Campos do formulário.
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -51,7 +40,6 @@ export default function AdminProdutosPage() {
   const [preco, setPreco] = useState("");
   const [pesoGramas, setPesoGramas] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
-
   // Controle da interface.
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
@@ -61,74 +49,56 @@ export default function AdminProdutosPage() {
   );
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
-
-
   /* =======================================================
    ESTADOS DA EDIÇÃO DE PRODUTOS
    ======================================================= */
-
 // Identifica o produto selecionado para edição.
 const [produtoEditando, setProdutoEditando] = useState<number | null>(null);
-
 // Campos independentes do formulário de cadastro.
 const [editNome, setEditNome] = useState("");
 const [editDescricao, setEditDescricao] = useState("");
 const [editPreco, setEditPreco] = useState("");
 const [editPesoGramas, setEditPesoGramas] = useState("");
 const [editCategoriaId, setEditCategoriaId] = useState("");
-
 // Controla o envio das alterações.
 const [salvandoEdicao, setSalvandoEdicao] = useState(false);
-
   /* =======================================================
      CONSULTAR CATEGORIAS
      ======================================================= */
-
   const carregarCategorias = useCallback(async () => {
     const resposta = await fetch("/api/admin/categorias", {
       cache: "no-store",
     });
-
     const dados = await resposta.json();
-
     if (!resposta.ok) {
       throw new Error(dados.erro || "Erro ao buscar categorias.");
     }
-
     setCategorias(
       (dados.categorias || []).filter(
         (categoria: Categoria) => categoria.ativa
       )
     );
   }, []);
-
   /* =======================================================
      CONSULTAR PRODUTOS
      ======================================================= */
-
   const carregarProdutos = useCallback(async () => {
     const resposta = await fetch("/api/admin/produtos", {
       cache: "no-store",
     });
-
     const dados = await resposta.json();
-
     if (!resposta.ok) {
       throw new Error(dados.erro || "Erro ao buscar produtos.");
     }
-
     setProdutos(dados.produtos || []);
   }, []);
-
   /* =======================================================
      CARREGAMENTO INICIAL
      ======================================================= */
-
   useEffect(() => {
     async function iniciar() {
       try {
         setCarregando(true);
-
         await Promise.all([
           carregarCategorias(),
           carregarProdutos(),
@@ -143,53 +113,40 @@ const [salvandoEdicao, setSalvandoEdicao] = useState(false);
         setCarregando(false);
       }
     }
-
     void iniciar();
   }, [carregarCategorias, carregarProdutos]);
-
   /* =======================================================
      NORMALIZAR PREÇO
      ======================================================= */
-
   function normalizarPreco(valor: string): string | null {
     const texto = valor.trim().replace(/^R\$\s*/, "");
-
     // Aceita 149,90 ou 149.90, sem separador de milhar.
     if (!/^\d{1,8}[,.]\d{2}$/.test(texto)) {
       return null;
     }
-
     return texto.replace(",", ".");
   }
-
   /* =======================================================
      CADASTRAR PRODUTO
      ======================================================= */
-
   async function cadastrarProduto(
     evento: React.FormEvent<HTMLFormElement>
   ) {
     evento.preventDefault();
-
     setErro("");
     setMensagem("");
-
     const precoFormatado = normalizarPreco(preco);
-
     if (!precoFormatado) {
       setErro("Informe o preço no formato 149,90.");
       return;
     }
-
     if (!categoriaId) {
       setErro("Selecione uma categoria.");
       return;
     }
-
     // O peso é obrigatório para calcular o frete.
     // Aceitamos somente números inteiros positivos em gramas.
     const pesoNumerico = Number(pesoGramas);
-
     if (
       !/^[1-9]\d*$/.test(pesoGramas.trim()) ||
       !Number.isSafeInteger(pesoNumerico) ||
@@ -198,10 +155,8 @@ const [salvandoEdicao, setSalvandoEdicao] = useState(false);
       setErro("Informe um peso válido em gramas, entre 1 e 100000.");
       return;
     }
-
     try {
       setSalvando(true);
-
       // Envia os dados para a API administrativa.
       const resposta = await fetch("/api/admin/produtos", {
         method: "POST",
@@ -216,24 +171,19 @@ const [salvandoEdicao, setSalvandoEdicao] = useState(false);
           categoriaId: Number(categoriaId),
         }),
       });
-
       const dados = await resposta.json();
-
       if (!resposta.ok) {
         throw new Error(
           dados.erro || "Não foi possível cadastrar o produto."
         );
       }
-
       // Limpa todos os campos após cadastrar o produto.
       setNome("");
       setDescricao("");
       setPreco("");
       setPesoGramas("");
       setCategoriaId("");
-
       setMensagem("Produto cadastrado com sucesso!");
-
       // Atualiza a lista com os dados reais do MySQL.
       await carregarProdutos();
     } catch (error) {
@@ -246,28 +196,21 @@ const [salvandoEdicao, setSalvandoEdicao] = useState(false);
       setSalvando(false);
     }
   }
-
-  
 /* =========================================================
    PUBLICAR / RETORNAR PARA RASCUNHO
    ========================================================= */
-
   async function alterarPublicacao(produto: Produto) {
     const novoStatus = !produto.ativo;
-
     // Confirma a alteração antes de enviar ao servidor.
     const confirmado = window.confirm(
       novoStatus
         ? `Deseja publicar "${produto.nome}" na loja?`
         : `Deseja retirar "${produto.nome}" da loja?`
     );
-
     if (!confirmado) return;
-
     setErro("");
     setMensagem("");
     setPublicandoId(produto.id);
-
     try {
       const resposta = await fetch(
         `/api/admin/produtos/${produto.id}/publicacao`,
@@ -281,18 +224,14 @@ const [salvandoEdicao, setSalvandoEdicao] = useState(false);
           }),
         }
       );
-
       const dados = await resposta.json();
-
       if (!resposta.ok) {
         throw new Error(
           dados.erro || "Não foi possível alterar a publicação."
         );
       }
-
       // Reconsulta os produtos para refletir o MySQL.
       await carregarProdutos();
-
       setMensagem(dados.mensagem);
     } catch (error) {
       setErro(
@@ -304,77 +243,59 @@ const [salvandoEdicao, setSalvandoEdicao] = useState(false);
       setPublicandoId(null);
     }
   }
-
-
-
   /* =======================================================
      FORMATAÇÃO DE PREÇOS
      ======================================================= */
-
   function formatarMoeda(valor: string) {
     return Number(valor).toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL",
     });
   }
-
   /* =======================================================
    INICIAR EDIÇÃO DE PRODUTO
    ======================================================= */
-
 function iniciarEdicao(produto: Produto) {
   // Limpa mensagens anteriores.
   setErro("");
   setMensagem("");
-
   // Identifica o produto e preenche os campos.
   setProdutoEditando(produto.id);
   setEditNome(produto.nome);
   setEditDescricao(produto.descricao ?? "");
-  setEditPreco(produto.preco.replace(".", ","));
+  setEditPreco(Number(produto.preco).toFixed(2).replace(".", ","));
   setEditPesoGramas(
     produto.pesoGramas === null ? "" : String(produto.pesoGramas)
   );
   setEditCategoriaId(String(produto.categoria.id));
 }
-
 /* =======================================================
    CANCELAR EDIÇÃO
    ======================================================= */
-
 function cancelarEdicao() {
   if (salvandoEdicao) return;
-
   setProdutoEditando(null);
   setErro("");
 }
-
 /* =======================================================
    SALVAR ALTERAÇÕES DO PRODUTO
    ======================================================= */
-
 async function salvarEdicao(
   evento: React.FormEvent<HTMLFormElement>
 ) {
   evento.preventDefault();
-
   if (produtoEditando === null || salvandoEdicao) return;
-
   setErro("");
   setMensagem("");
-
   // Reutiliza a validação de preço do cadastro.
   const precoFormatado = normalizarPreco(editPreco);
-
   if (!precoFormatado || Number(precoFormatado) <= 0) {
     setErro("Informe um preço válido, como 149,90.");
     return;
   }
-
   // Valida o peso em gramas.
   const pesoTexto = editPesoGramas.trim();
   const pesoNumerico = Number(pesoTexto);
-
   if (
     !/^[1-9]\d*$/.test(pesoTexto) ||
     !Number.isSafeInteger(pesoNumerico) ||
@@ -383,10 +304,8 @@ async function salvarEdicao(
     setErro("Informe um peso inteiro entre 1 e 100000 gramas.");
     return;
   }
-
   // Confirma a categoria selecionada.
   const categoriaNumero = Number(editCategoriaId);
-
   if (
     !Number.isSafeInteger(categoriaNumero) ||
     categoriaNumero <= 0
@@ -394,10 +313,8 @@ async function salvarEdicao(
     setErro("Selecione uma categoria válida.");
     return;
   }
-
   try {
     setSalvandoEdicao(true);
-
     // Atualiza apenas os dados principais do produto.
     const resposta = await fetch(
       `/api/admin/produtos/${produtoEditando}`,
@@ -416,18 +333,14 @@ async function salvarEdicao(
         }),
       }
     );
-
     const dados = await resposta.json();
-
     if (!resposta.ok) {
       throw new Error(
         dados.erro || "Não foi possível atualizar o produto."
       );
     }
-
     // Recarrega a lista diretamente do MySQL.
     await carregarProdutos();
-
     // Fecha o formulário após a atualização.
     setProdutoEditando(null);
     setMensagem("Produto atualizado com sucesso!");
@@ -441,11 +354,9 @@ async function salvarEdicao(
     setSalvandoEdicao(false);
   }
 }
-
   /* =======================================================
      ESTILOS COMPARTILHADOS
      ======================================================= */
-
   const estiloCampo: React.CSSProperties = {
     width: "100%",
     padding: "16px",
@@ -454,23 +365,37 @@ async function salvarEdicao(
     fontSize: "16px",
     boxSizing: "border-box",
   };
-
-  // Estilo utilizado nos dois botões de gerenciamento.
+  // Alinhamento compartilhado por todas as células da tabela.
+  const estiloCelula: React.CSSProperties = {
+    padding: "16px 12px",
+    textAlign: "left",
+    verticalAlign: "middle",
+    overflowWrap: "break-word",
+    fontSize: "14px",
+  };
+  // Estilo compartilhado dos botões de ação dos produtos.
   const estiloAcao: React.CSSProperties = {
-    display: "inline-block",
-    padding: "12px 18px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "220px",
+    maxWidth: "100%",
+    minHeight: "44px",
+    padding: "10px 12px",
+    boxSizing: "border-box",
     backgroundColor: "#171717",
     color: "#ffffff",
+    border: "none",
     textDecoration: "none",
-    fontSize: "13px",
+    textAlign: "center",
+    fontSize: "12px",
     fontWeight: 700,
+    lineHeight: 1.3,
     whiteSpace: "nowrap",
   };
-
   /* =======================================================
      INTERFACE
      ======================================================= */
-
   return (
     <main
       style={{
@@ -493,15 +418,12 @@ async function salvarEdicao(
       >
         Produtos
       </h1>
-
       <p style={{ color: "#666", fontSize: "18px" }}>
         Gerencie o catálogo de roupas da Pádua Culture.
       </p>
-
       {/* ===================================================
           FORMULÁRIO DE CADASTRO
           =================================================== */}
-
       <section
         style={{
           background: "#fff",
@@ -513,7 +435,6 @@ async function salvarEdicao(
         <h2 style={{ fontSize: "26px", marginBottom: "24px" }}>
           Novo produto
         </h2>
-
         <form onSubmit={cadastrarProduto}>
           <div
             style={{
@@ -534,7 +455,6 @@ async function salvarEdicao(
                 required
               />
             </label>
-
             <label>
               Categoria
               <select
@@ -544,7 +464,6 @@ async function salvarEdicao(
                 required
               >
                 <option value="">Selecione uma categoria</option>
-
                 {categorias.map((categoria) => (
                   <option
                     key={categoria.id}
@@ -555,7 +474,6 @@ async function salvarEdicao(
                 ))}
               </select>
             </label>
-
             {/* ===================================================
                 CAMPO: PREÇO DO PRODUTO
                 =================================================== */}
@@ -570,7 +488,6 @@ async function salvarEdicao(
                 required
               />
             </label>
-
             {/* ===================================================
                 CAMPO: PESO DO PRODUTO
                 Utilizado no cálculo de frete da Melhor Envio.
@@ -591,10 +508,8 @@ async function salvarEdicao(
                 required
               />
             </label>
-
             {/* Fecha a grade dos campos principais do formulário. */}
             </div>
-
             {/* ===================================================
                 CAMPO: DESCRIÇÃO DO PRODUTO
                 =================================================== */}
@@ -605,7 +520,6 @@ async function salvarEdicao(
               }}
             >
               Descrição
-
             <textarea
               style={{
                 ...estiloCampo,
@@ -619,7 +533,6 @@ async function salvarEdicao(
               maxLength={10000}
             />
           </label>
-
           {/* Mensagens de erro e sucesso. */}
           {erro && (
             <p
@@ -632,7 +545,6 @@ async function salvarEdicao(
               {erro}
             </p>
           )}
-
           {mensagem && (
             <p
               role="status"
@@ -644,7 +556,6 @@ async function salvarEdicao(
               {mensagem}
             </p>
           )}
-
           <button
             type="submit"
             disabled={salvando || carregando}
@@ -665,11 +576,9 @@ async function salvarEdicao(
           </button>
         </form>
       </section>
-
       {/* ===================================================
           LISTAGEM DOS PRODUTOS
           =================================================== */}
-
       <section
         style={{
           background: "#fff",
@@ -681,146 +590,111 @@ async function salvarEdicao(
         <h2 style={{ fontSize: "26px", marginBottom: "24px" }}>
           Produtos cadastrados ({produtos.length})
         </h2>
-
         {carregando ? (
           <p>Carregando produtos...</p>
         ) : produtos.length === 0 ? (
           <p>Nenhum produto cadastrado ainda.</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto", width: "100%" }}>
+            {/* Rolagem horizontal preserva o alinhamento em telas pequenas. */}
             <table
               style={{
                 width: "100%",
+                minWidth: "950px",
+                tableLayout: "fixed",
                 borderCollapse: "collapse",
                 textAlign: "left",
               }}
             >
+              {/* Larguras únicas compartilhadas pelo cabeçalho e pelo corpo. */}
+              <colgroup>
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "20%" }} />
+                <col style={{ width: "15%" }} />
+                <col style={{ width: "15%" }} />
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "30%" }} />
+              </colgroup>
               <thead>
-                <tr
-                  style={{
-                    borderBottom: "2px solid #171717",
-                  }}
-                >
-                  {[
-                    "ID",
-                    "PRODUTO",
-                    "CATEGORIA",
-                    "PREÇO",
-                    "STATUS",
-                    "AÇÕES",
-                  ].map((titulo) => (
-                    <th
-                      key={titulo}
-                      style={{ padding: "14px" }}
-                    >
-                      {titulo}
-                    </th>
-                  ))}
+                <tr style={{ borderBottom: "2px solid #171717" }}>
+                  {["ID", "PRODUTO", "CATEGORIA", "PREÇO", "STATUS", "AÇÕES"].map(
+                    (titulo) => (
+                      <th
+                        key={titulo}
+                        scope="col"
+                        style={{
+                          padding: "14px 12px",
+                          textAlign: "left",
+                          verticalAlign: "middle",
+                          fontSize: "13px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {titulo}
+                      </th>
+                    )
+                  )}
                 </tr>
               </thead>
-
               <tbody>
                 {produtos.map((produto) => (
                   <tr
                     key={produto.id}
-                    style={{
-                      borderBottom: "1px solid #eee",
-                    }}
+                    style={{ borderBottom: "1px solid #eee" }}
                   >
-                    <td style={{ padding: "16px" }}>
-                      {produto.id}
-                    </td>
-
-                    <td
-                      style={{
-                        padding: "16px",
-                        fontWeight: 700,
-                      }}
-                    >
+                    <td style={estiloCelula}>{produto.id}</td>
+                    <td style={{ ...estiloCelula, fontWeight: 700 }}>
                       {produto.nome}
                     </td>
-
-                    <td style={{ padding: "16px" }}>
-                      {produto.categoria.nome}
+                    <td style={estiloCelula}>{produto.categoria.nome}</td>
+                    <td style={estiloCelula}>{formatarMoeda(produto.preco)}</td>
+                    <td style={estiloCelula}>
+                      {produto.ativo ? "ATIVO" : "RASCUNHO"}
                     </td>
-
-                    <td style={{ padding: "16px" }}>
-                      {formatarMoeda(produto.preco)}
-                    </td>
-
-                    <td style={{ padding: "16px" }}>
-                      {produto.ativo
-                        ? "ATIVO"
-                        : "RASCUNHO"}
-                    </td>
-
-                    <td style={{ padding: "16px" }}>
-                      {/* Mantém o gerenciamento de variantes
-                          que já existe no projeto. */}
-
-                     {/* ===================================================
-                          AÇÕES DO PRODUTO
-                          Cada botão possui sua própria funcionalidade.
-                          =================================================== */}
+                    <td style={estiloCelula}>
+                      {/* Cada ação é independente e ocupa a mesma largura. */}
                       <div
                         style={{
                           display: "flex",
-                          flexWrap: "wrap",
-                          gap: "10px",
-                          alignItems: "center",
+                          flexDirection: "column",
+                          alignItems: "flex-start",
+                          gap: "8px",
                         }}
                       >
-                        {/* 1. EDITAR PRODUTO
-                            Abre o formulário de edição sem navegar para outra página. */}
                         <button
                           type="button"
                           disabled={salvandoEdicao || salvando}
                           onClick={() => iniciarEdicao(produto)}
                           style={{
                             ...estiloAcao,
-                            border: "none",
-                            cursor: "pointer",
+                            cursor: salvandoEdicao || salvando ? "not-allowed" : "pointer",
                             opacity: salvandoEdicao || salvando ? 0.5 : 1,
                           }}
                         >
                           EDITAR PRODUTO
                         </button>
-
-                        {/* 2. GERENCIAR VARIANTES
-                            Mantém o acesso ao cadastro de tamanhos, cores e estoque. */}
                         <Link
                           href={`/admin/produtos/${produto.id}/variantes`}
                           style={estiloAcao}
                         >
                           GERENCIAR VARIANTES
                         </Link>
-
-                        {/* 3. GERENCIAR IMAGENS
-                            Mantém o acesso às fotografias do produto. */}
                         <Link
                           href={`/admin/produtos/${produto.id}/imagens`}
                           style={estiloAcao}
                         >
                           GERENCIAR IMAGENS
                         </Link>
-
-                        {/* 4. PUBLICAR OU RETORNAR PARA RASCUNHO
-                            Preserva a lógica de publicação existente. */}
                         <button
                           type="button"
                           disabled={publicandoId !== null}
                           onClick={() => alterarPublicacao(produto)}
                           style={{
                             ...estiloAcao,
-                            border: "none",
-                            cursor:
-                              publicandoId !== null ? "wait" : "pointer",
-                            backgroundColor: produto.ativo
-                              ? "#666666"
-                              : "#171717",
+                            cursor: publicandoId !== null ? "wait" : "pointer",
+                            backgroundColor: produto.ativo ? "#666666" : "#171717",
                             opacity:
-                              publicandoId !== null &&
-                              publicandoId !== produto.id
+                              publicandoId !== null && publicandoId !== produto.id
                                 ? 0.5
                                 : 1,
                           }}
@@ -838,10 +712,8 @@ async function salvarEdicao(
               </tbody>
             </table>
           </div>
-
         )}
       </section>
-
       {/* ===================================================
           FORMULÁRIO DE EDIÇÃO DE PRODUTO
           Exibido somente quando um produto é selecionado.
@@ -859,12 +731,10 @@ async function salvarEdicao(
           <h2 style={{ fontSize: "26px", marginBottom: "12px" }}>
             Editar produto #{produtoEditando}
           </h2>
-
           <p style={{ color: "#666", marginBottom: "24px" }}>
             Atualize os dados principais do produto. As imagens,
             variantes, estoque e publicação serão preservados.
           </p>
-
           <form onSubmit={salvarEdicao}>
             <div
               style={{
@@ -886,7 +756,6 @@ async function salvarEdicao(
                   disabled={salvandoEdicao}
                 />
               </label>
-
               {/* Categoria do produto */}
               <label>
                 Categoria
@@ -898,7 +767,6 @@ async function salvarEdicao(
                   disabled={salvandoEdicao}
                 >
                   <option value="">Selecione uma categoria</option>
-
                   {categorias.map((categoria) => (
                     <option key={categoria.id} value={categoria.id}>
                       {categoria.nome}
@@ -906,7 +774,6 @@ async function salvarEdicao(
                   ))}
                 </select>
               </label>
-
               {/* Preço em reais */}
               <label>
                 Preço (R$)
@@ -920,7 +787,6 @@ async function salvarEdicao(
                   disabled={salvandoEdicao}
                 />
               </label>
-
               {/* Peso usado na cotação do Melhor Envio */}
               <label>
                 Peso do produto (gramas)
@@ -938,7 +804,6 @@ async function salvarEdicao(
                 />
               </label>
             </div>
-
             {/* Descrição completa */}
             <label
               style={{
@@ -960,7 +825,6 @@ async function salvarEdicao(
                 disabled={salvandoEdicao}
               />
             </label>
-
             {/* Mensagem de erro da edição */}
             {erro && (
               <p
@@ -970,7 +834,6 @@ async function salvarEdicao(
                 {erro}
               </p>
             )}
-
             {/* Botões para salvar ou cancelar */}
             <div
               style={{
@@ -994,7 +857,6 @@ async function salvarEdicao(
                   ? "SALVANDO..."
                   : "SALVAR ALTERAÇÕES"}
               </button>
-
               <button
                 type="button"
                 onClick={cancelarEdicao}
@@ -1017,4 +879,3 @@ async function salvarEdicao(
     </main>
   );
 }
-
