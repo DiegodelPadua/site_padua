@@ -359,7 +359,8 @@ async function salvarEdicao(
      ======================================================= */
   const estiloCampo: React.CSSProperties = {
     width: "100%",
-    padding: "16px",
+    padding: "14px 16px",
+    minHeight: "50px",
     border: "1px solid #ccc",
     backgroundColor: "#fff",
     fontSize: "16px",
@@ -399,7 +400,7 @@ async function salvarEdicao(
   return (
     <main
       style={{
-        padding: "40px 24px 80px",
+        padding: "40px clamp(12px, 3vw, 32px) 80px",
         backgroundColor: "#f5f5f5",
         minHeight: "100vh",
         color: "#171717",
@@ -428,7 +429,7 @@ async function salvarEdicao(
         style={{
           background: "#fff",
           border: "1px solid #ddd",
-          padding: "32px",
+          padding: "clamp(20px, 3vw, 32px)",
           marginTop: "36px",
         }}
       >
@@ -440,7 +441,7 @@ async function salvarEdicao(
             style={{
               display: "grid",
               gridTemplateColumns:
-                "repeat(auto-fit, minmax(240px, 1fr))",
+                "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
               gap: "20px",
             }}
           >
@@ -561,7 +562,9 @@ async function salvarEdicao(
             disabled={salvando || carregando}
             style={{
               marginTop: "24px",
-              padding: "18px 32px",
+              padding: "14px 24px",
+              minHeight: "48px",
+              minWidth: "220px",
               background: "#171717",
               color: "#fff",
               border: "none",
@@ -583,7 +586,7 @@ async function salvarEdicao(
         style={{
           background: "#fff",
           border: "1px solid #ddd",
-          padding: "32px",
+          padding: "clamp(20px, 3vw, 32px)",
           marginTop: "32px",
         }}
       >
@@ -724,7 +727,7 @@ async function salvarEdicao(
           style={{
             background: "#fff",
             border: "1px solid #ddd",
-            padding: "32px",
+            padding: "clamp(20px, 3vw, 32px)",
             marginTop: "32px",
           }}
         >
@@ -740,7 +743,7 @@ async function salvarEdicao(
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "repeat(auto-fit, minmax(240px, 1fr))",
+                  "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
                 gap: "20px",
               }}
             >
@@ -863,6 +866,8 @@ async function salvarEdicao(
                 disabled={salvandoEdicao}
                 style={{
                   padding: "12px 18px",
+                    minHeight: "44px",
+                    minWidth: "220px",
                   background: "#fff",
                   color: "#171717",
                   border: "1px solid #aaa",

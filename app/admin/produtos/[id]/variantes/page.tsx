@@ -284,354 +284,112 @@ export default function AdminVariantesPage() {
     0
   );
 
+  // Layout compartilhado entre cadastro e edição, sem alterar as APIs.
+  const botaoBase: React.CSSProperties = {
+    minHeight: 46, minWidth: 190, padding: "12px 22px", fontSize: 12,
+    fontWeight: 800, letterSpacing: "0.025em", cursor: "pointer",
+    borderRadius: 0, boxSizing: "border-box", textAlign: "center",
+  };
+  const tituloSecao: React.CSSProperties = {
+    margin: 0, fontSize: "clamp(21px, 2.6vw, 28px)",
+    letterSpacing: "-0.035em", lineHeight: 1.2,
+  };
+  const gradeCampos: React.CSSProperties = {
+    display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+    gap: 18, alignItems: "end",
+  };
+  const rotulo: React.CSSProperties = {
+    display: "block", fontSize: 13, fontWeight: 600, minWidth: 0,
+  };
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f5f5f5",
-        color: "#171717",
-        padding: "40px 24px 80px",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "1200px",
-          margin: "0 auto",
-        }}
-      >
-        {/* RETORNO AO PRODUTO */}
-        <Link
-          href="/admin/produtos"
-          style={{
-            color: "#555555",
-            textDecoration: "none",
-            fontSize: "12px",
-            fontWeight: 700,
-          }}
-        >
+    <main style={{ minHeight: "100vh", background: "#f5f5f5", color: "#171717", padding: "clamp(20px, 4vw, 48px) clamp(16px, 3vw, 32px) 80px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        {/* Navegação e título padronizados com o restante do painel. */}
+        <Link href="/admin/produtos" style={{ color: "#555", textDecoration: "none", fontSize: 12, fontWeight: 700, letterSpacing: "0.035em" }}>
           ← VOLTAR AOS PRODUTOS
         </Link>
-
-        {/* CABEÇALHO DA PÁGINA */}
-        <header
-          style={{
-            marginTop: "32px",
-            marginBottom: "36px",
-          }}
-        >
-          <h1
-            style={{
-              fontSize: "clamp(40px, 6vw, 76px)",
-              fontWeight: 800,
-              letterSpacing: "-3px",
-              lineHeight: 1,
-              margin: "0 0 12px",
-            }}
-          >
+        <header style={{ margin: "30px 0 32px" }}>
+          <h1 style={{ fontSize: "clamp(36px, 5.5vw, 64px)", fontWeight: 800, letterSpacing: "-0.055em", lineHeight: 1.04, margin: "0 0 12px" }}>
             Variantes e estoque
           </h1>
-
-          <p
-            style={{
-              color: "#666666",
-              fontSize: "18px",
-              margin: 0,
-            }}
-          >
-            {produto
-              ? `Produto: ${produto.nome}`
-              : "Carregando produto..."}
+          <p style={{ color: "#666", fontSize: 16, margin: 0 }}>
+            {produto ? `Produto: ${produto.nome}` : "Carregando produto..."}
           </p>
         </header>
 
-        {/* INDICADORES */}
-        <section
-          aria-label="Indicadores de estoque"
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "20px",
-          }}
-        >
-          <div style={estiloCartao}>
-            <p
-              style={{
-                fontSize: "12px",
-                margin: "0 0 8px",
-              }}
-            >
-              VARIANTES
-            </p>
-
-            <strong
-              style={{
-                fontSize: "32px",
-                display: "block",
-              }}
-            >
-              {variantes.length}
-            </strong>
+        {/* Indicadores com dimensões iguais. */}
+        <section aria-label="Indicadores de estoque" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+          <div style={{ ...estiloCartao, minHeight: 128, boxSizing: "border-box" }}>
+            <p style={{ fontSize: 12, fontWeight: 700, margin: "0 0 10px" }}>VARIANTES</p>
+            <strong style={{ fontSize: 36, lineHeight: 1 }}>{variantes.length}</strong>
           </div>
-
-          <div style={estiloCartao}>
-            <p
-              style={{
-                fontSize: "12px",
-                margin: "0 0 8px",
-              }}
-            >
-              UNIDADES EM ESTOQUE
-            </p>
-
-            <strong
-              style={{
-                fontSize: "32px",
-                display: "block",
-              }}
-            >
-              {estoqueTotal}
-            </strong>
+          <div style={{ ...estiloCartao, minHeight: 128, boxSizing: "border-box" }}>
+            <p style={{ fontSize: 12, fontWeight: 700, margin: "0 0 10px" }}>UNIDADES EM ESTOQUE</p>
+            <strong style={{ fontSize: 36, lineHeight: 1 }}>{estoqueTotal}</strong>
           </div>
         </section>
 
-        {/* FORMULÁRIO DE CADASTRO */}
-        <section
-          style={{
-            ...estiloCartao,
-            marginTop: "32px",
-          }}
-        >
-          <h2
-            style={{
-              fontSize: "26px",
-              margin: "0 0 24px",
-            }}
-          >
-            Nova variante
-          </h2>
-
+        {/* Cadastro: mantém a chamada POST e suas validações existentes. */}
+        <section style={{ ...estiloCartao, marginTop: 24 }}>
+          <h2 style={{ ...tituloSecao, marginBottom: 24 }}>Nova variante</h2>
           <form onSubmit={cadastrarVariante}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: "20px",
-              }}
-            >
-              <label>
-                Tamanho
-                <input
-                  style={estiloCampo}
-                  value={tamanho}
-                  onChange={(evento) =>
-                    setTamanho(evento.target.value)
-                  }
-                  placeholder="Ex.: M"
-                  maxLength={30}
-                  required
-                />
+            <div style={gradeCampos}>
+              <label style={rotulo}>Tamanho
+                <input style={estiloCampo} value={tamanho} onChange={(e) => setTamanho(e.target.value)} placeholder="Ex.: M" maxLength={30} required disabled={salvando} />
               </label>
-
-              <label>
-                Cor
-                <input
-                  style={estiloCampo}
-                  value={cor}
-                  onChange={(evento) =>
-                    setCor(evento.target.value)
-                  }
-                  placeholder="Ex.: Preto"
-                  maxLength={60}
-                  required
-                />
+              <label style={rotulo}>Cor
+                <input style={estiloCampo} value={cor} onChange={(e) => setCor(e.target.value)} placeholder="Ex.: Preto" maxLength={60} required disabled={salvando} />
               </label>
-
-              <label>
-                SKU
-                <input
-                  style={estiloCampo}
-                  value={sku}
-                  onChange={(evento) =>
-                    setSku(evento.target.value)
-                  }
-                  placeholder="PAD-ESS-M-PRE"
-                  maxLength={100}
-                />
+              <label style={rotulo}>SKU (opcional)
+                <input style={estiloCampo} value={sku} onChange={(e) => setSku(e.target.value)} placeholder="PAD-BRA-M-PRE" maxLength={100} disabled={salvando} />
               </label>
-
-              <label>
-                Quantidade
-                <input
-                  type="number"
-                  style={estiloCampo}
-                  value={quantidade}
-                  onChange={(evento) =>
-                    setQuantidade(evento.target.value)
-                  }
-                  min={0}
-                  step={1}
-                  required
-                />
+              <label style={rotulo}>Quantidade
+                <input type="number" style={estiloCampo} value={quantidade} onChange={(e) => setQuantidade(e.target.value)} min={0} max={2147483647} step={1} required disabled={salvando} />
               </label>
             </div>
-
-            {/* MENSAGENS */}
-            {erro && (
-              <p
-                role="alert"
-                style={{
-                  color: "#b91c1c",
-                  marginTop: "20px",
-                }}
-              >
-                {erro}
-              </p>
-            )}
-
-            {mensagem && (
-              <p
-                role="status"
-                style={{
-                  color: "#15803d",
-                  marginTop: "20px",
-                }}
-              >
-                {mensagem}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={salvando || salvandoEdicao || carregando}
-              style={{
-                background: "#171717",
-                color: "#ffffff",
-                padding: "16px 32px",
-                border: "none",
-                marginTop: "24px",
-                fontWeight: 700,
-                cursor:
-                  salvando || carregando
-                    ? "wait"
-                    : "pointer",
-                opacity:
-                  salvando || carregando ? 0.6 : 1,
-              }}
-            >
-              {salvando
-                ? "SALVANDO..."
-                : "CADASTRAR VARIANTE"}
-            </button>
+            <div style={{ marginTop: 24, display: "flex", flexWrap: "wrap", gap: 12 }}>
+              <button type="submit" disabled={salvando || salvandoEdicao || carregando} style={{ ...botaoBase, background: "#171717", color: "#fff", border: "1px solid #171717", opacity: salvando || salvandoEdicao || carregando ? 0.55 : 1 }}>
+                {salvando ? "SALVANDO..." : "CADASTRAR VARIANTE"}
+              </button>
+            </div>
           </form>
         </section>
 
-        {/* TABELA DE VARIANTES */}
-        <section
-          style={{
-            ...estiloCartao,
-            marginTop: "32px",
-          }}
-        >
-          <h2
-            style={{
-              fontSize: "26px",
-              margin: "0 0 24px",
-            }}
-          >
-            Variantes cadastradas ({variantes.length})
-          </h2>
+        {/* Mensagens compartilhadas: exibidas apenas uma vez na página. */}
+        {erro && <p role="alert" style={{ padding: "14px 18px", background: "#fff0f0", border: "1px solid #e6b4b4", color: "#a21b1b", margin: "20px 0 0" }}>{erro}</p>}
+        {mensagem && <p role="status" style={{ padding: "14px 18px", background: "#edf8ee", border: "1px solid #a9d7b0", color: "#216b30", margin: "20px 0 0" }}>{mensagem}</p>}
 
+        {/* Tabela com colunas de largura controlada e rolagem em telas estreitas. */}
+        <section style={{ ...estiloCartao, marginTop: 24 }}>
+          <h2 style={{ ...tituloSecao, marginBottom: 24 }}>Variantes cadastradas ({variantes.length})</h2>
           {carregando ? (
             <p>Carregando variantes...</p>
           ) : variantes.length === 0 ? (
-            <p style={{ color: "#666666" }}>
-              Nenhuma variante cadastrada.
-            </p>
+            <p style={{ color: "#666" }}>Nenhuma variante cadastrada.</p>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  textAlign: "left",
-                }}
-              >
-                <thead>
-                  <tr>
-                    {[
-                      "TAMANHO",
-                      "COR",
-                      "SKU",
-                      "ESTOQUE",
-                      "STATUS",
-                      "AÇÕES",
-                    ].map((titulo) => (
-                      <th
-                        key={titulo}
-                        style={{
-                          padding: "14px 12px",
-                          borderBottom:
-                            "2px solid #171717",
-                          fontSize: "12px",
-                        }}
-                      >
-                        {titulo}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
+            <div style={{ width: "100%", overflowX: "auto" }}>
+              <table style={{ width: "100%", minWidth: 670, borderCollapse: "collapse", tableLayout: "fixed", textAlign: "left" }}>
+                <colgroup>
+                  <col style={{ width: "13%" }} /><col style={{ width: "18%" }} />
+                  <col style={{ width: "24%" }} /><col style={{ width: "14%" }} />
+                  <col style={{ width: "14%" }} /><col style={{ width: "17%" }} />
+                </colgroup>
+                <thead><tr>
+                  {["TAMANHO", "COR", "SKU", "ESTOQUE", "STATUS", "AÇÕES"].map((titulo) => (
+                    <th key={titulo} scope="col" style={{ padding: "14px 10px", borderBottom: "2px solid #171717", fontSize: 11, fontWeight: 800 }}>{titulo}</th>
+                  ))}
+                </tr></thead>
                 <tbody>
                   {variantes.map((variante) => (
                     <tr key={variante.id}>
+                      <td style={estiloCelula}>{variante.tamanho}</td>
+                      <td style={{ ...estiloCelula, overflowWrap: "anywhere" }}>{variante.cor}</td>
+                      <td style={{ ...estiloCelula, overflowWrap: "anywhere" }}>{variante.sku || "—"}</td>
+                      <td style={estiloCelula}>{variante.quantidade}</td>
+                      <td style={estiloCelula}><strong style={{ fontSize: 11, color: variante.ativa ? "#237a36" : "#b42318" }}>{variante.ativa ? "ATIVA" : "INATIVA"}</strong></td>
                       <td style={estiloCelula}>
-                        {variante.tamanho}
-                      </td>
-
-                      <td style={estiloCelula}>
-                        {variante.cor}
-                      </td>
-
-                      <td style={estiloCelula}>
-                        {variante.sku || "—"}
-                      </td>
-
-                      <td style={estiloCelula}>
-                        {variante.quantidade}
-                      </td>
-
-                      <td style={estiloCelula}>
-                        <strong
-                          style={{
-                            fontSize: "12px",
-                            color: variante.ativa
-                              ? "#237a36"
-                              : "#b42318",
-                          }}
-                        >
-                          {variante.ativa
-                            ? "ATIVA"
-                            : "INATIVA"}
-                        </strong>
-                      </td>
-
-                      <td style={estiloCelula}>
-                        <button
-                          type="button"
-                          disabled={salvando || salvandoEdicao}
-                          onClick={() => iniciarEdicao(variante)}
-                          style={{
-                            padding: "10px 16px",
-                            background: "#171717",
-                            color: "#fff",
-                            border: "none",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            opacity: salvando || salvandoEdicao ? 0.5 : 1,
-                          }}
-                        >
+                        <button type="button" disabled={salvando || salvandoEdicao} onClick={() => iniciarEdicao(variante)} style={{ ...botaoBase, minWidth: 0, width: "100%", minHeight: 42, padding: "10px 8px", background: "#171717", color: "#fff", border: "1px solid #171717", opacity: salvando || salvandoEdicao ? 0.5 : 1 }}>
                           EDITAR
                         </button>
                       </td>
@@ -643,72 +401,38 @@ export default function AdminVariantesPage() {
           )}
         </section>
 
-        {/* EDIÇÃO: preserva o cadastro e usa a API PATCH existente. */}
+        {/* Edição: mantém PATCH, alteração de status e histórico de estoque. */}
         {varianteEditando !== null && (
-          <section
-            aria-label="Editar variante"
-            style={{ ...estiloCartao, marginTop: "32px" }}
-          >
-            <h2 style={{ fontSize: "26px", margin: "0 0 8px" }}>
-              Editar variante #{varianteEditando}
-            </h2>
-            <p style={{ color: "#666", marginBottom: "24px" }}>
-              Ajuste os dados e o estoque. Mudanças na quantidade serão
-              registradas no histórico de movimentações.
+          <section aria-label="Editar variante" style={{ ...estiloCartao, marginTop: 24, borderTop: "3px solid #171717" }}>
+            <h2 style={{ ...tituloSecao, marginBottom: 8 }}>Editar variante #{varianteEditando}</h2>
+            <p style={{ color: "#666", fontSize: 14, lineHeight: 1.5, margin: "0 0 24px" }}>
+              Ajuste os dados e o estoque. Mudanças na quantidade serão registradas no histórico de movimentações.
             </p>
             <form onSubmit={salvarEdicao}>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: "20px",
-              }}>
-                <label>
-                  Tamanho
-                  <input style={estiloCampo} value={editTamanho}
-                    onChange={(e) => setEditTamanho(e.target.value)}
-                    maxLength={30} required disabled={salvandoEdicao} />
+              <div style={gradeCampos}>
+                <label style={rotulo}>Tamanho
+                  <input style={estiloCampo} value={editTamanho} onChange={(e) => setEditTamanho(e.target.value)} maxLength={30} required disabled={salvandoEdicao} />
                 </label>
-                <label>
-                  Cor
-                  <input style={estiloCampo} value={editCor}
-                    onChange={(e) => setEditCor(e.target.value)}
-                    maxLength={60} required disabled={salvandoEdicao} />
+                <label style={rotulo}>Cor
+                  <input style={estiloCampo} value={editCor} onChange={(e) => setEditCor(e.target.value)} maxLength={60} required disabled={salvandoEdicao} />
                 </label>
-                <label>
-                  SKU (opcional)
-                  <input style={estiloCampo} value={editSku}
-                    onChange={(e) => setEditSku(e.target.value)}
-                    maxLength={100} disabled={salvandoEdicao} />
+                <label style={rotulo}>SKU (opcional)
+                  <input style={estiloCampo} value={editSku} onChange={(e) => setEditSku(e.target.value)} maxLength={100} disabled={salvandoEdicao} />
                 </label>
-                <label>
-                  Quantidade em estoque
-                  <input type="number" style={estiloCampo}
-                    value={editQuantidade}
-                    onChange={(e) => setEditQuantidade(e.target.value)}
-                    min={0} max={2147483647} step={1} required
-                    disabled={salvandoEdicao} />
+                <label style={rotulo}>Quantidade em estoque
+                  <input type="number" style={estiloCampo} value={editQuantidade} onChange={(e) => setEditQuantidade(e.target.value)} min={0} max={2147483647} step={1} required disabled={salvandoEdicao} />
                 </label>
-                <label>
-                  Status da variante
-                  <select style={estiloCampo} value={editAtiva ? "ativa" : "inativa"}
-                    onChange={(e) => setEditAtiva(e.target.value === "ativa")}
-                    disabled={salvandoEdicao}>
-                    <option value="ativa">ATIVA</option>
-                    <option value="inativa">INATIVA</option>
+                <label style={rotulo}>Status da variante
+                  <select style={estiloCampo} value={editAtiva ? "ativa" : "inativa"} onChange={(e) => setEditAtiva(e.target.value === "ativa")} disabled={salvandoEdicao}>
+                    <option value="ativa">ATIVA</option><option value="inativa">INATIVA</option>
                   </select>
                 </label>
               </div>
-              {erro && <p role="alert" style={{ color: "#b91c1c", marginTop: 20 }}>{erro}</p>}
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 24 }}>
-                <button type="submit" disabled={salvandoEdicao || salvando}
-                  style={{ background: "#171717", color: "#fff", border: "none",
-                    padding: "16px 28px", fontWeight: 700, cursor: "pointer" }}>
+                <button type="submit" disabled={salvandoEdicao || salvando} style={{ ...botaoBase, background: "#171717", color: "#fff", border: "1px solid #171717", opacity: salvandoEdicao || salvando ? 0.55 : 1 }}>
                   {salvandoEdicao ? "SALVANDO..." : "SALVAR ALTERAÇÕES"}
                 </button>
-                <button type="button" onClick={cancelarEdicao}
-                  disabled={salvandoEdicao}
-                  style={{ background: "#fff", border: "1px solid #aaa",
-                    padding: "16px 28px", fontWeight: 700, cursor: "pointer" }}>
+                <button type="button" onClick={cancelarEdicao} disabled={salvandoEdicao} style={{ ...botaoBase, background: "#fff", color: "#171717", border: "1px solid #aaa", opacity: salvandoEdicao ? 0.55 : 1 }}>
                   CANCELAR
                 </button>
               </div>
