@@ -1,2358 +1,1328 @@
+
 "use client";
 
-
-
-/* =========================================================*
-
-   IMPORTAÇÕES
-
-*   ========================================================= */
-
-
-
 import Link from "next/link";
-
-// Hooks utilizados para estados, efeitos e controle de edição.
-
 import { useEffect, useRef, useState } from "react";
-
 import { useCart } from "../context/CartContext";
-
 import "./checkout.css";
 
-
-
-
-
-/* =========================================================*
-
-   DADOS DO CLIENTE AUTENTICADO
-
-*   ========================================================= */
-
-
-
-type UsuarioCheckout = {
-
-  id: number;
-
-  nome: string;
-
-  sobrenome: string;
-
-  email: string;
-
-  telefone?: string | null;
-
-};
-
-
-
-type EnderecoCheckout = {
-
-  id: number;
-
-  apelido: string | null;
-
-  destinatario: string;
-
-  cep: string;
-
-  logradouro: string;
-
-  numero: string;
-
-  complemento: string | null;
-
-  bairro: string;
-
-  cidade: string;
-
-  estado: string;
-
-  principal: boolean;
-
-};
-
-
-
-
-
-
-
-/* =========================================================*
-
-   CHECKOUT - PÁDUA
-
-   =========================================================
-
-   Primeira etapa da finalização da compra.
-
-
-
-   Nesta página:
-
-   - coletamos os dados de contato;
-
-   - coletamos os dados de entrega;
-
-   - mostramos os produtos da sacola;
-
-   - calculamos o subtotal.
-
-
-
-   FUTURAMENTE:
-
-   - cálculo de frete;
-
-   - validação de CEP;
-
-   - criação do pedido no banco;
-
-   - pagamento.
-
-*   ========================================================= */
-
-
-
-export default function Checkout() {
-
-
-
-/* =======================================================*
-
-     DADOS DA SACOLA
-
-*     ======================================================= */
-
-
-
-const { items } = useCart();
-
-
-
-/* =========================================================*
-
-   IDENTIFICAÇÃO DO CLIENTE
-
-*   ========================================================= */
-
-
-
-
-
-// Endereços cadastrados no MySQL.
-
-const [enderecos, setEnderecos] = useState<EnderecoCheckout[]>([]);
-
-const [enderecoSelecionadoId, setEnderecoSelecionadoId] = useState<number | null>(null);
-
-const [carregandoEnderecos, setCarregandoEnderecos] = useState(true);
-
-const [salvandoEndereco, setSalvandoEndereco] = useState(false);
-
-const [mensagemEndereco, setMensagemEndereco] = useState("");
-
-
-
-// Dados editáveis do formulário de entrega.
-
-const [dadosEntrega, setDadosEntrega] = useState({
-
-    cep: "",
-
-    endereco: "",
-
-    numero: "",
-
-    complemento: "",
-
-    bairro: "",
-
-    cidade: "",
-
-    estado: "",
-
-  });
-
-
-
-/* =========================================================*
-
-   CONTROLE DE EDIÇÃO DO ENDEREÇO
-
-   =========================================================
-
-   Identifica alterações realizadas pelo cliente enquanto
-
-   a consulta de endereços está em andamento.
-
-*   ========================================================= */
-
-
-
-// Controla a versão atual das alterações no formulário.
-
-const versaoEdicaoEndereco = useRef(0);
-
-// Cancela consultas anteriores quando o cliente edita ou seleciona um endereço.
-const consultaCepController = useRef<AbortController | null>(null);
-const [consultandoCep, setConsultandoCep] = useState(false);
-const [mensagemCep, setMensagemCep] = useState("");
-
-
-
-
-// Executada sempre que o cliente modificar um campo.
-
-function registrarEdicaoEndereco() {
-
-
-
-// Incrementa a versão da edição.
-
-  versaoEdicaoEndereco.current += 1;
-  // Impede que uma resposta antiga do ViaCEP sobrescreva alterações manuais.
-  consultaCepController.current?.abort();
-  consultaCepController.current = null;
-  setConsultandoCep(false);
-  setMensagemCep("");
-
-
-
-
-// Desmarca o endereço cadastrado anteriormente selecionado.
-
-  setEnderecoSelecionadoId(null);
-
-}
-
-
-
-const [usuario, setUsuario] = useState<UsuarioCheckout | null>(null);
-
-const [carregandoUsuario, setCarregandoUsuario] = useState(true);
-
-const [erroUsuario, setErroUsuario] = useState("");
-
-
-
-  useEffect(() => {
-
-const controller = new AbortController();
-
-
-
-async function consultarCliente() {
-
-      try {
-
-const response = await fetch("/api/auth/me", {
-
-          method: "GET",
-
-          credentials: "same-origin",
-
-          cache: "no-store",
-
-          signal: controller.signal,
-
-        });
-
-
-
-        if (response.status === 401) {
-
-          setUsuario(null);
-
-return;
-
-        }
-
-
-
-        if (!response.ok) {
-
-          throw new Error("Não foi possível consultar sua conta.");
-
-        }
-
-
-
-const dados = await response.json();
-
-
-
-        if (!controller.signal.aborted) {
-
-          setUsuario(
-
-            dados.autenticado && dados.usuario
-
-              ? dados.usuario
-
-              : null
-
-          );
-
-        }
-
-      } catch {
-
-        if (!controller.signal.aborted) {
-
-          setErroUsuario("Não foi possível carregar seus dados.");
-
-        }
-
-      } finally {
-
-        if (!controller.signal.aborted) {
-
-          setCarregandoUsuario(false);
-
-        }
-
-      }
-
-    }
-
-
-
-    consultarCliente();
-
-
-
-return () => controller.abort();
-
-  }, []);
-
-
-
-/* =========================================================*
-
-   CONSULTAR ENDEREÇOS DO CLIENTE - PÁDUA CULTURE
-
-   =========================================================
-
-
-
-   OBJETIVO:
-
-   Consultar os endereços cadastrados no MySQL da Hostinger
-
-   por meio da API GET /api/enderecos.
-
-
-
-   FUNCIONAMENTO:
-
-   1. Aguarda a identificação do cliente.
-
-   2. Verifica se existe um usuário autenticado.
-
-   3. Consulta os endereços desse usuário.
-
-   4. Armazena os endereços no estado do React.
-
-   5. Seleciona o endereço principal automaticamente.
-
-   6. Preenche os campos do formulário de entrega.
-
-
-
-*   ========================================================= */
-
-
-
-  useEffect(() => {
-
-
-
-/* -------------------------------------------------------*
-
-     ETAPA 1 - AGUARDAR A IDENTIFICAÇÃO DO CLIENTE
-
-     -------------------------------------------------------
-
-
-
-     Não podemos consultar os endereços enquanto a API
-
-     de autenticação ainda está carregando.
-
-*  */
-
-
-
-  if (carregandoUsuario) {
-
-return;
-
-  }
-
-
-
-/* -------------------------------------------------------*
-
-     ETAPA 2 - VERIFICAR SE O CLIENTE ESTÁ AUTENTICADO
-
-     -------------------------------------------------------
-
-
-
-     Caso não exista um usuário autenticado, limpamos os
-
-     endereços e encerramos o carregamento.
-
-*  */
-
-
-
-  if (!usuario) {
-
-    setEnderecos([]);
-
-// Registra a edição para evitar preenchimento automático atrasado.
-
-    registrarEdicaoEndereco();
-
-    setCarregandoEnderecos(false);
-
-return;
-
-  }
-
-
-
-/* -------------------------------------------------------*
-
-     ETAPA 3 - PREPARAR O CONTROLE DA REQUISIÇÃO
-
-     -------------------------------------------------------
-
-
-
-     AbortController permite cancelar a requisição caso
-
-     o componente seja desmontado ou a consulta mude.
-
-*  */
-
-
-
-const controller = new AbortController();
-
-
-
-// Guarda a versão do formulário no início da consulta.
-
-const versaoInicial = versaoEdicaoEndereco.current;
-
-
-
-/* -------------------------------------------------------*
-
-     ETAPA 4 - CONSULTAR A API DE ENDEREÇOS
-
-*     ------------------------------------------------------- */
-
-
-
-async function consultarEnderecos() {
-
-
-
-// Informa que a consulta começou.
-
-    setCarregandoEnderecos(true);
-
-
-
-// Limpa mensagens anteriores.
-
-    setMensagemEndereco("");
-
-
-
-    try {
-
-
-
-/* ---------------------------------------------------*
-
-         REALIZAR A REQUISIÇÃO GET
-
-         ---------------------------------------------------
-
-
-
-         credentials: "same-origin"
-
-         Envia o cookie de autenticação do próprio site.
-
-
-
-         cache: "no-store"
-
-         Evita utilizar uma resposta armazenada em cache.
-
-
-
-         signal
-
-         Permite cancelar a requisição quando necessário.
-
-*      */
-
-
-
-const resposta = await fetch("/api/enderecos", {
-
-        method: "GET",
-
-        credentials: "same-origin",
-
-        cache: "no-store",
-
-        signal: controller.signal,
-
-      });
-
-
-
-/* ---------------------------------------------------*
-
-         VERIFICAR SE A API RESPONDEU CORRETAMENTE
-
-*         --------------------------------------------------- */
-
-
-
-      if (!resposta.ok) {
-
-        throw new Error(
-
-          "Não foi possível consultar os endereços."
-
-        );
-
-      }
-
-
-
-/* ---------------------------------------------------*
-
-         CONVERTER A RESPOSTA PARA JSON
-
-*         --------------------------------------------------- */
-
-
-
-const dados = await resposta.json();
-
-
-
-// Garante que a lista recebida seja um array.
-
-const lista: EnderecoCheckout[] =
-
-        Array.isArray(dados.enderecos)
-
-          ? dados.enderecos
-
-          : [];
-
-
-
-// Evita atualizar estados após o cancelamento.
-
-      if (controller.signal.aborted) {
-
-return;
-
-      }
-
-
-
-/* ---------------------------------------------------*
-
-         ARMAZENAR OS ENDEREÇOS NO REACT
-
-*         --------------------------------------------------- */
-
-
-
-      setEnderecos(lista);
-
-
-
-/* ---------------------------------------------------*
-
-         IDENTIFICAR O ENDEREÇO PRINCIPAL
-
-         ---------------------------------------------------
-
-
-
-         Se não existir um endereço marcado como principal,
-
-         utilizamos o primeiro endereço da lista.
-
-*      */
-
-
-
-const principal =
-
-        lista.find((endereco) => endereco.principal) ??
-
-        lista[0];
-
-
-
-/* ---------------------------------------------------*
-
-         PREENCHER O FORMULÁRIO AUTOMATICAMENTE
-
-*         --------------------------------------------------- */
-
-
-
-/* =====================================================*
-
-        PREENCHIMENTO AUTOMÁTICO SEGURO
-
-        =====================================================
-
-        Só preenche se o cliente não tiver modificado
-
-        manualmente o formulário durante a consulta.
-
-*        ===================================================== */
-
-
-
-      if (
-
-        principal &&
-
-        versaoEdicaoEndereco.current === versaoInicial
-
-      ) {
-
-        preencherEndereco(principal);
-
-      }
-
-
-
-    } catch (error) {
-
-
-
-/* ---------------------------------------------------*
-
-         TRATAMENTO DE ERROS
-
-         ---------------------------------------------------
-
-
-
-         Não exibimos erro quando a requisição foi
-
-         cancelada intencionalmente.
-
-*      */
-
-
-
-      if (!controller.signal.aborted) {
-
-        console.error(
-
-          "[CHECKOUT] Erro ao consultar endereços:",
-
-          error
-
-        );
-
-
-
-        setMensagemEndereco(
-
-          "Não foi possível carregar seus endereços."
-
-        );
-
-      }
-
-
-
-    } finally {
-
-
-
-/* ---------------------------------------------------*
-
-         FINALIZAR O CARREGAMENTO
-
-*         --------------------------------------------------- */
-
-
-
-      if (!controller.signal.aborted) {
-
-        setCarregandoEnderecos(false);
-
-      }
-
-    }
-
-  }
-
-
-
-/* -------------------------------------------------------*
-
-     ETAPA 5 - EXECUTAR A CONSULTA
-
-*     ------------------------------------------------------- */
-
-
-
-  consultarEnderecos();
-
-
-
-/* -------------------------------------------------------*
-
-     ETAPA 6 - CANCELAR REQUISIÇÕES PENDENTES
-
-*     ------------------------------------------------------- */
-
-
-
-return () => {
-
-    controller.abort();
-
-  };
-
-
-
-/* -------------------------------------------------------*
-
-     DEPENDÊNCIAS
-
-     -------------------------------------------------------
-
-
-
-     O efeito será executado quando:
-
-     - A identificação do cliente terminar.
-
-     - O ID do usuário autenticado mudar.
-
-*  */
-
-
-
-}, [usuario?.id, carregandoUsuario]);
-
-
-
-/* =======================================================*
-
-     SUBTOTAL
-
-*     ======================================================= */
-
-
-
 /* =========================================================
-   CONSULTA AUTOMÁTICA DE CEP - VIACEP
-   =========================================================
-   Preenche somente os dados disponibilizados pelo serviço.
-   Não altera número nem complemento e não grava no banco.
+   PÁDUA CULTURE — CHECKOUT
+   Mantém autenticação, endereços, ViaCEP e sacola.
+   Acrescenta cotação e seleção de frete.
    ========================================================= */
 
-async function consultarCEP(cep: string, versaoDaDigitacao: number) {
-  const somenteNumeros = cep.replace(/\D/g, "");
-  if (somenteNumeros.length !== 8) return;
+type UsuarioCheckout = {
+  id: number;
+  nome: string;
+  sobrenome: string;
+  email: string;
+  telefone?: string | null;
+};
 
-  // Cancela uma consulta ainda pendente, caso exista.
-  consultaCepController.current?.abort();
-  const controller = new AbortController();
-  consultaCepController.current = controller;
-  setConsultandoCep(true);
-  setMensagemCep("");
+type EnderecoCheckout = {
+  id: number;
+  apelido: string | null;
+  destinatario: string;
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string | null;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  principal: boolean;
+};
 
-  try {
-    const resposta = await fetch(
-      `https://viacep.com.br/ws/${somenteNumeros}/json/`,
-      { signal: controller.signal }
-    );
+type DadosEntrega = {
+  cep: string;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+};
 
-    if (!resposta.ok) {
-      throw new Error("Serviço de CEP temporariamente indisponível. Preencha o endereço manualmente.");
-    }
+type OpcaoFreteCheckout = {
+  id: number;
+  nome: string;
+  transportadora: string;
+  preco: number;
+  prazoDias: number | null;
+};
 
-    const dados: {
-      erro?: boolean;
-      cep?: string;
-      logradouro?: string;
-      bairro?: string;
-      localidade?: string;
-      uf?: string;
-    } = await resposta.json();
+const entregaInicial: DadosEntrega = {
+  cep: "",
+  endereco: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
+  cidade: "",
+  estado: "",
+};
 
-    // Ignora respostas de CEPs anteriores ou de campos já editados.
-    if (controller.signal.aborted || versaoEdicaoEndereco.current !== versaoDaDigitacao) {
-      return;
-    }
-
-    if (dados.erro) {
-      setMensagemCep("CEP não encontrado. Confira o número ou preencha o endereço manualmente.");
-      return;
-    }
-
-    setDadosEntrega((anterior) => ({
-      ...anterior,
-      endereco: dados.logradouro ?? "",
-      bairro: dados.bairro ?? "",
-      cidade: dados.localidade ?? "",
-      estado: dados.uf ?? "",
-    }));
-
-    // Alguns CEPs não possuem logradouro ou bairro no ViaCEP.
-    if (!dados.logradouro || !dados.bairro) {
-      setMensagemCep("CEP localizado. Complete os campos que não foram informados automaticamente.");
-    }
-  } catch (erro) {
-    if (!controller.signal.aborted && versaoEdicaoEndereco.current === versaoDaDigitacao) {
-      setMensagemCep(
-        erro instanceof Error ? erro.message : "Não foi possível consultar o CEP. Preencha manualmente."
-      );
-    }
-  } finally {
-    if (consultaCepController.current === controller) {
-      consultaCepController.current = null;
-      setConsultandoCep(false);
-    }
-  }
+function formatarMoeda(valor: number) {
+  return valor.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
-const subtotal = items.reduce(
+function somenteNumeros(valor: string) {
+  return valor.replace(/\D/g, "");
+}
 
-    (total, item) =>
+export default function Checkout() {
+  /* =======================================================
+     SACOLA
+     ======================================================= */
 
-      total + item.price * item.quantity,
+  const { items } = useCart();
 
+  const subtotal = items.reduce(
+    (total, item) => total + item.price * item.quantity,
     0
-
   );
 
-
-
-
-
-return (
-
-    <main className="checkoutPage">
-
-
-
-      {/* ===================================================*
-
-          CABEÇALHO
-
-*          =================================================== */}
-
-
-
-      <header className="checkoutHeader">
-
-
-
-        <Link
-
-          href="/"
-
-          className="checkoutLogo"
-
-        >
-
-          PÁDUA
-
-        </Link>
-
-
-
-        <Link
-
-          href="/"
-
-          className="checkoutBack"
-
-        >
-
-          ← CONTINUAR COMPRANDO
-
-        </Link>
-
-
-
-      </header>
-
-
-
-
-
-      {/* ===================================================*
-
-          CONTEÚDO
-
-*          =================================================== */}
-
-
-
-      <div className="checkoutLayout">
-
-
-
-
-
-        {/* =================================================*
-
-            LADO ESQUERDO - DADOS DO CLIENTE
-
-*            ================================================= */}
-
-
-
-        <section className="checkoutForm">
-
-
-
-          <span className="checkoutEyebrow">
-
-            CHECKOUT
-
-          </span>
-
-
-
-          <h1>
-
-            FINALIZAR
-
-            <br />
-
-            COMPRA
-
-          </h1>
-
-
-
-
-
-          {/* ===============================================*
-
-              CONTATO
-
-*              =============================================== */}
-
-
-
-          <div className="checkoutSection">
-
-
-
-            <div className="checkoutSectionHeader">
-
-              <span>01</span>
-
-              <h2>CONTATO</h2>
-
-            </div>
-
-            {/* =====================================================*
-
-                ESTADO DA IDENTIFICAÇÃO DO CLIENTE
-
-*                ===================================================== */}
-
-
-
-            {carregandoUsuario && (
-
-              <p role="status">CARREGANDO SEUS DADOS...</p>
-
-            )}
-
-
-
-            {erroUsuario && (
-
-              <p role="alert">{erroUsuario}</p>
-
-            )}
-
-
-
-            {!carregandoUsuario && !erroUsuario && !usuario && (
-
-              <p>
-
-                PARA FINALIZAR SUA COMPRA,{" "}
-
-                <Link href="/login">
-
-                  ENTRE NA SUA CONTA
-
-                </Link>.
-
-              </p>
-
-            )}
-
-
-
-            <div className="checkoutFields">
-
-
-
-              <label className="checkoutField checkoutFieldFull">
-
-                <span>E-MAIL</span>
-
-
-
-                <input
-
-                  type="email"
-
-                  name="email"
-
-                  placeholder="seu@email.com"
-
-                  value={usuario?.email ?? ""}
-
-                  readOnly
-
-                  autoComplete="email"
-
-                />
-
-              </label>
-
-
-
-              <label className="checkoutField checkoutFieldFull">
-
-                <span>TELEFONE</span>
-
-
-
-                <input
-
-                  type="tel"
-
-                  name="telefone"
-
-                  placeholder="(11) 99999-9999"
-
-                  value={usuario?.telefone ?? ""}
-
-                  readOnly
-
-                  autoComplete="tel"
-
-                />
-
-              </label>
-
-
-
-            </div>
-
-
-
-          </div>
-
-
-
-
-
-          {/* ===============================================*
-
-              ENTREGA
-
-*              =============================================== */}
-
-
-
-          <div className="checkoutSection">
-
-
-
-            <div className="checkoutSectionHeader">
-
-              <span>02</span>
-
-              <h2>ENTREGA</h2>
-
-            </div>
-
-
-
-            {/* =====================================================*
-
-                ENDEREÇOS CADASTRADOS DO CLIENTE
-
-*                ===================================================== */}
-
-
-
-            {carregandoEnderecos && usuario && (
-
-              <p role="status">CARREGANDO ENDEREÇOS...</p>
-
-            )}
-
-
-
-            {!carregandoEnderecos && enderecos.length > 0 && (
-
-              <div className="checkoutSavedAddresses">
-
-                <p>SEUS ENDEREÇOS CADASTRADOS</p>
-
-
-
-                {enderecos.map((endereco) => (
-
-                  <button
-
-                    key={endereco.id}
-
-                    type="button"
-
-
-
-// Seleciona e preenche o formulário.
-
-                    onClick={() => preencherEndereco(endereco)}
-
-
-
-// Informa qual endereço está selecionado.
-
-                    aria-pressed={enderecoSelecionadoId === endereco.id}
-
-                  >
-
-                    {endereco.apelido || "ENDEREÇO DE ENTREGA"}
-
-
-
-                    {endereco.principal ? " — PRINCIPAL" : ""}
-
-
-
-                    {" · "}
-
-                    {endereco.logradouro}, {endereco.numero}
-
-                    {" — "}
-
-                    {endereco.cidade}/{endereco.estado}
-
-                  </button>
-
-                ))}
-
-              </div>
-
-            )}
-
-
-
-
-
-            <div className="checkoutFields">
-
-
-
-              <label className="checkoutField">
-
-                <span>NOME</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="nome"
-
-                  placeholder="Nome"
-
-                  value={usuario?.nome ?? ""}
-
-                  readOnly
-
-                  autoComplete="given-name"
-
-                />
-
-              </label>
-
-
-
-
-
-              <label className="checkoutField">
-
-                <span>SOBRENOME</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="sobrenome"
-
-                  placeholder="Sobrenome"
-
-                  value={usuario?.sobrenome ?? ""}
-
-                  readOnly
-
-                  autoComplete="family-name"
-
-                />
-
-              </label>
-
-
-
-
-
-              {/* =====================================================*
-
-                  CAMPO CEP - ENDEREÇO DE ENTREGA
-
-*                  ===================================================== */}
-
-
-
-              <label className="checkoutField checkoutFieldFull">
-
-                <span>CEP</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="cep"
-
-                  placeholder="00000-000"
-
-                  autoComplete="postal-code"
-
-                  inputMode="numeric"
-
-                  maxLength={9}
-
-
-
-// Exibe o CEP armazenado no estado do React.
-
-                  value={dadosEntrega.cep}
-
-
-
-// Atualiza o CEP quando o cliente digitar.
-
-                  onChange={(event) => {
-                    // Mantém somente os oito dígitos e aplica a máscara 00000-000.
-                    const numeros = event.target.value.replace(/\D/g, "").slice(0, 8);
-                    const cepFormatado = numeros.length > 5
-                      ? `${numeros.slice(0, 5)}-${numeros.slice(5)}`
-                      : numeros;
-
-                    // Invalida consultas antigas e a seleção de endereço salvo.
-                    registrarEdicaoEndereco();
-                    const versaoAtual = versaoEdicaoEndereco.current;
-
-                    // Evita manter rua/cidade de um CEP diferente.
-                    setDadosEntrega((anterior) => ({
-                      ...anterior,
-                      cep: cepFormatado,
-                      endereco: "",
-                      bairro: "",
-                      cidade: "",
-                      estado: "",
-                    }));
-
-                    // Consulta automaticamente quando o CEP estiver completo.
-                    if (numeros.length === 8) {
-                      void consultarCEP(numeros, versaoAtual);
-                    }
-                  }}
-
-                />
-
-              </label>
-
-              {consultandoCep && <p role="status">CONSULTANDO CEP...</p>}
-              {mensagemCep && <p role="status">{mensagemCep}</p>}
-
-
-
-
-
-
-
-
-              {/* =====================================================*
-
-                  ENDEREÇO - RUA OU AVENIDA
-
-*                  ===================================================== */}
-
-
-
-              <label className="checkoutField checkoutFieldFull">
-
-                <span>ENDEREÇO</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="endereco"
-
-                  placeholder="Rua / Avenida"
-
-                  autoComplete="address-line1"
-
-                  maxLength={200}
-
-                  value={dadosEntrega.endereco}
-
-                  onChange={(event) => {
-
-// O cliente alterou um endereço anteriormente salvo.
-
-// Registra a edição para evitar preenchimento automático atrasado.
-
-                    registrarEdicaoEndereco();
-
-
-
-// Atualiza o logradouro sem apagar os outros campos.
-
-                    setDadosEntrega((anterior) => ({
-
-...anterior,
-
-                      endereco: event.target.value,
-
-                    }));
-
-                  }}
-
-                />
-
-              </label>
-
-
-
-
-
-              {/* =====================================================*
-
-                  NÚMERO DO IMÓVEL
-
-*                  ===================================================== */}
-
-
-
-              <label className="checkoutField">
-
-                <span>NÚMERO</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="numero"
-
-                  placeholder="Número"
-
-                  maxLength={20}
-
-                  value={dadosEntrega.numero}
-
-                  onChange={(event) => {
-
-// Marca o formulário como modificado.
-
-// Registra a edição para evitar preenchimento automático atrasado.
-
-                    registrarEdicaoEndereco();
-
-
-
-// Atualiza somente o número do imóvel.
-
-                    setDadosEntrega((anterior) => ({
-
-...anterior,
-
-                      numero: event.target.value,
-
-                    }));
-
-                  }}
-
-                />
-
-              </label>
-
-
-
-
-
-              {/* =====================================================*
-
-                  COMPLEMENTO - CAMPO OPCIONAL
-
-*                  ===================================================== */}
-
-
-
-              <label className="checkoutField">
-
-                <span>COMPLEMENTO</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="complemento"
-
-                  placeholder="Apto, bloco..."
-
-                  autoComplete="address-line2"
-
-                  maxLength={150}
-
-                  value={dadosEntrega.complemento}
-
-                  onChange={(event) => {
-
-// Invalida a seleção anterior.
-
-// Registra a edição para evitar preenchimento automático atrasado.
-
-                    registrarEdicaoEndereco();
-
-
-
-// Atualiza somente o complemento.
-
-                    setDadosEntrega((anterior) => ({
-
-...anterior,
-
-                      complemento: event.target.value,
-
-                    }));
-
-                  }}
-
-                />
-
-              </label>
-
-
-
-
-
-              {/* =====================================================*
-
-                  BAIRRO
-
-*                  ===================================================== */}
-
-
-
-              <label className="checkoutField checkoutFieldFull">
-
-                <span>BAIRRO</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="bairro"
-
-                  placeholder="Bairro"
-
-                  maxLength={100}
-
-                  value={dadosEntrega.bairro}
-
-                  onChange={(event) => {
-
-// Identifica alteração manual do endereço.
-
-// Registra a edição para evitar preenchimento automático atrasado.
-
-                    registrarEdicaoEndereco();
-
-// Atualiza somente o bairro.
-
-                    setDadosEntrega((anterior) => ({
-
-...anterior,
-
-                      bairro: event.target.value,
-
-                    }));
-
-                  }}
-
-                />
-
-              </label>
-
-
-
-
-
-              {/* =====================================================*
-
-                  CIDADE
-
-*                  ===================================================== */}
-
-
-
-              <label className="checkoutField">
-
-                <span>CIDADE</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="cidade"
-
-                  placeholder="Cidade"
-
-                  autoComplete="address-level2"
-
-                  maxLength={100}
-
-                  value={dadosEntrega.cidade}
-
-                  onChange={(event) => {
-
-// Marca o endereço como modificado.
-
-// Registra a edição para evitar preenchimento automático atrasado.
-
-                    registrarEdicaoEndereco();
-
-
-
-// Atualiza somente a cidade.
-
-                    setDadosEntrega((anterior) => ({
-
-...anterior,
-
-                      cidade: event.target.value,
-
-                    }));
-
-                  }}
-
-                />
-
-              </label>
-
-
-
-
-
-              {/* =====================================================*
-
-                  ESTADO - SIGLA DA UNIDADE FEDERATIVA
-
-*                  ===================================================== */}
-
-
-
-              <label className="checkoutField">
-
-                <span>ESTADO</span>
-
-
-
-                <input
-
-                  type="text"
-
-                  name="estado"
-
-                  placeholder="SP"
-
-                  autoComplete="address-level1"
-
-                  maxLength={2}
-
-                  value={dadosEntrega.estado}
-
-                  onChange={(event) => {
-
-// Marca o endereço como modificado.
-
-// Registra a edição para evitar preenchimento automático atrasado.
-
-                    registrarEdicaoEndereco();
-
-
-
-// Converte a sigla para letras maiúsculas.
-
-                    setDadosEntrega((anterior) => ({
-
-...anterior,
-
-                      estado: event.target.value.toUpperCase(),
-
-                    }));
-
-                  }}
-
-                />
-
-              </label>
-
-
-
-
-
-            </div>
-
-
-
-          {/* =====================================================*
-
-              MENSAGENS E CADASTRO DE ENDEREÇO
-
-*              ===================================================== */}
-
-
-
-          {mensagemEndereco && (
-
-            <p role="status">{mensagemEndereco}</p>
-
-          )}
-
-
-
-          <button
-
-            type="button"
-
-            className="checkoutContinue"
-
-
-
-// Executa o cadastro na API de endereços.
-
-            onClick={salvarEndereco}
-
-
-
-// Impede cliques repetidos ou sem autenticação.
-
-            disabled={
-
-              salvandoEndereco ||
-
-              carregandoUsuario ||
-
-              carregandoEnderecos ||
-
-              !usuario
-
-            }
-
-          >
-
-            {salvandoEndereco
-
-              ? "SALVANDO ENDEREÇO..."
-
-              : "SALVAR ENDEREÇO"}
-
-          </button>
-
-
-
-
-
-          </div>
-
-
-
-        </section>
-
-
-
-
-
-        {/* =================================================*
-
-            LADO DIREITO - RESUMO
-
-*            ================================================= */}
-
-
-
-        <aside className="checkoutSummary">
-
-
-
-          <div className="checkoutSummaryHeader">
-
-
-
-            <span>SEU PEDIDO</span>
-
-
-
-            <span>
-
-              {items.reduce(
-
-                (total, item) =>
-
-                  total + item.quantity,
-
-                0
-
-              )}{" "}
-
-              ITENS
-
-            </span>
-
-
-
-          </div>
-
-
-
-
-
-          {/* ===============================================*
-
-              SACOLA VAZIA
-
-*              =============================================== */}
-
-
-
-          {items.length === 0 ? (
-
-
-
-            <div className="checkoutEmpty">
-
-
-
-              <p>
-
-                SUA SACOLA ESTÁ VAZIA.
-
-              </p>
-
-
-
-              <Link href="/">
-
-                VOLTAR PARA A LOJA →
-
-              </Link>
-
-
-
-            </div>
-
-
-
-          ) : (
-
-
-
-            <>
-
-              {/* ===========================================*
-
-                  PRODUTOS
-
-*                  =========================================== */}
-
-
-
-              <div className="checkoutItems">
-
-
-
-                {items.map((item) => (
-
-
-
-                  <div
-
-                    className="checkoutItem"
-
-                    key={item.id}
-
-                  >
-
-
-
-                    <div className="checkoutItemImage">
-
-
-
-                      <img
-
-                        src={item.image}
-
-                        alt={item.name}
-
-                      />
-
-
-
-                      <span>
-
-                        {item.quantity}
-
-                      </span>
-
-
-
-                    </div>
-
-
-
-
-
-                    <div className="checkoutItemInfo">
-
-
-
-                      <div>
-
-
-
-                        <h3>
-
-                          {item.name}
-
-                        </h3>
-
-
-
-                        <p>
-
-                          {item.color} / {item.size}
-
-                        </p>
-
-
-
-                      </div>
-
-
-
-
-
-                      <strong>
-
-                        {(
-
-                          item.price *
-
-                          item.quantity
-
-                        ).toLocaleString(
-
-                          "pt-BR",
-
-                          {
-
-                            style: "currency",
-
-                            currency: "BRL",
-
-                          }
-
-                        )}
-
-                      </strong>
-
-
-
-                    </div>
-
-
-
-                  </div>
-
-
-
-                ))}
-
-
-
-              </div>
-
-
-
-
-
-              {/* ===========================================*
-
-                  VALORES
-
-*                  =========================================== */}
-
-
-
-              <div className="checkoutTotals">
-
-
-
-                <div>
-
-                  <span>SUBTOTAL</span>
-
-
-
-                  <strong>
-
-                    {subtotal.toLocaleString(
-
-                      "pt-BR",
-
-                      {
-
-                        style: "currency",
-
-                        currency: "BRL",
-
-                      }
-
-                    )}
-
-                  </strong>
-
-                </div>
-
-
-
-
-
-                <div>
-
-                  <span>FRETE</span>
-
-
-
-                  <strong>
-
-                    CALCULADO DEPOIS
-
-                  </strong>
-
-                </div>
-
-
-
-
-
-                <div className="checkoutTotal">
-
-
-
-                  <span>TOTAL</span>
-
-
-
-                  <strong>
-
-                    {subtotal.toLocaleString(
-
-                      "pt-BR",
-
-                      {
-
-                        style: "currency",
-
-                        currency: "BRL",
-
-                      }
-
-                    )}
-
-                  </strong>
-
-
-
-                </div>
-
-
-
-              </div>
-
-
-
-
-
-              {/* ===========================================*
-
-                  PRÓXIMA ETAPA
-
-*                  =========================================== */}
-
-
-
-              <button
-
-                type="button"
-
-                className="checkoutContinue"
-
-              >
-
-                <span>
-
-                  CONTINUAR PARA PAGAMENTO
-
-                </span>
-
-
-
-                <span>→</span>
-
-              </button>
-
-
-
-            </>
-
-
-
-          )}
-
-
-
-        </aside>
-
-
-
-      </div>
-
-
-
-    </main>
-
+  const quantidadeItens = items.reduce(
+    (total, item) => total + item.quantity,
+    0
   );
 
+  /* =======================================================
+     AUTENTICAÇÃO
+     ======================================================= */
 
+  const [usuario, setUsuario] =
+    useState<UsuarioCheckout | null>(null);
 
-// Preenche o formulário com os dados de um endereço cadastrado.
+  const [carregandoUsuario, setCarregandoUsuario] =
+    useState(true);
 
-  function preencherEndereco(endereco: EnderecoCheckout) {
-    // A seleção de um endereço salvo tem prioridade sobre consultas de CEP pendentes.
+  const [erroUsuario, setErroUsuario] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function consultarCliente() {
+      try {
+        const resposta = await fetch("/api/auth/me", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (resposta.status === 401) {
+          setUsuario(null);
+          return;
+        }
+
+        if (!resposta.ok) {
+          throw new Error(
+            "Não foi possível consultar sua conta."
+          );
+        }
+
+        const dados = await resposta.json();
+
+        if (!controller.signal.aborted) {
+          setUsuario(
+            dados.autenticado && dados.usuario
+              ? dados.usuario
+              : null
+          );
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setErroUsuario(
+            "Não foi possível carregar seus dados."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCarregandoUsuario(false);
+        }
+      }
+    }
+
+    void consultarCliente();
+
+    return () => controller.abort();
+  }, []);
+
+  /* =======================================================
+     ENDEREÇOS
+     ======================================================= */
+
+  const [enderecos, setEnderecos] =
+    useState<EnderecoCheckout[]>([]);
+
+  const [
+    enderecoSelecionadoId,
+    setEnderecoSelecionadoId,
+  ] = useState<number | null>(null);
+
+  const [
+    carregandoEnderecos,
+    setCarregandoEnderecos,
+  ] = useState(true);
+
+  const [salvandoEndereco, setSalvandoEndereco] =
+    useState(false);
+
+  const [mensagemEndereco, setMensagemEndereco] =
+    useState("");
+
+  const [dadosEntrega, setDadosEntrega] =
+    useState<DadosEntrega>(entregaInicial);
+
+  // Impede respostas antigas de sobrescreverem
+  // informações digitadas manualmente.
+  const versaoEdicaoEndereco = useRef(0);
+
+  const consultaCepController =
+    useRef<AbortController | null>(null);
+
+  const [consultandoCep, setConsultandoCep] =
+    useState(false);
+
+  const [mensagemCep, setMensagemCep] = useState("");
+
+  /* =======================================================
+     FRETE
+     ======================================================= */
+
+  const [opcoesFrete, setOpcoesFrete] =
+    useState<OpcaoFreteCheckout[]>([]);
+
+  const [freteSelecionadoId, setFreteSelecionadoId] =
+    useState<number | null>(null);
+
+  const [cotandoFrete, setCotandoFrete] =
+    useState(false);
+
+  const [erroFrete, setErroFrete] = useState("");
+
+  const [mensagemPagamento, setMensagemPagamento] =
+    useState("");
+
+  const cotacaoController =
+    useRef<AbortController | null>(null);
+
+  const cepCotacao = somenteNumeros(dadosEntrega.cep);
+
+  // Detecta alterações na sacola, inclusive quantidade.
+  const chaveSacola = JSON.stringify(
+    items.map((item) => [
+      item.id,
+      item.variantId,
+      item.quantity,
+    ])
+  );
+
+  // Uma cotação anterior deixa de ser válida
+  // quando o CEP ou os itens mudam.
+  useEffect(() => {
+    cotacaoController.current?.abort();
+    cotacaoController.current = null;
+
+    setOpcoesFrete([]);
+    setFreteSelecionadoId(null);
+    setErroFrete("");
+    setMensagemPagamento("");
+    setCotandoFrete(false);
+  }, [cepCotacao, chaveSacola]);
+
+  /* =======================================================
+     FUNÇÕES DE ENDEREÇO
+     ======================================================= */
+
+  function registrarEdicaoEndereco() {
+    versaoEdicaoEndereco.current += 1;
+
     consultaCepController.current?.abort();
     consultaCepController.current = null;
-    versaoEdicaoEndereco.current += 1;
+
     setConsultandoCep(false);
     setMensagemCep("");
 
+    // Um endereço editado não corresponde mais
+    // necessariamente ao endereço salvo.
+    setEnderecoSelecionadoId(null);
+    setMensagemEndereco("");
+  }
+
+  function preencherEndereco(endereco: EnderecoCheckout) {
+    consultaCepController.current?.abort();
+    consultaCepController.current = null;
+
+    versaoEdicaoEndereco.current += 1;
+
+    setConsultandoCep(false);
+    setMensagemCep("");
 
     setEnderecoSelecionadoId(endereco.id);
 
-
-
     setDadosEntrega({
-
       cep: endereco.cep,
-
       endereco: endereco.logradouro,
-
       numero: endereco.numero,
-
       complemento: endereco.complemento ?? "",
-
       bairro: endereco.bairro,
-
       cidade: endereco.cidade,
-
       estado: endereco.estado,
-
     });
-
   }
 
+  function alterarCampo(
+    campo: keyof DadosEntrega,
+    valor: string
+  ) {
+    registrarEdicaoEndereco();
 
+    setDadosEntrega((anterior) => ({
+      ...anterior,
+      [campo]: valor,
+    }));
+  }
 
-/* =========================================================*
+  /* =======================================================
+     CONSULTAR ENDEREÇOS CADASTRADOS
+     ======================================================= */
 
-    SALVAR ENDEREÇO DE ENTREGA - PÁDUA CULTURE
-
-    =========================================================
-
-    Envia os dados do formulário para POST /api/enderecos.
-
-
-
-    O usuário é identificado pelo cookie de sessão
-
-    no backend, e não por um ID enviado pelo navegador.
-
-*    ========================================================= */
-
-
-
-async function salvarEndereco() {
-
-// Impede o envio repetido enquanto a gravação acontece.
-
-    if (salvandoEndereco) return;
-
-
-
-// Exige uma conta autenticada.
+  useEffect(() => {
+    if (carregandoUsuario) return;
 
     if (!usuario) {
-
-      setMensagemEndereco("Entre na sua conta para salvar o endereço.");
-
-return;
-
+      setEnderecos([]);
+      setCarregandoEnderecos(false);
+      return;
     }
 
+    const controller = new AbortController();
 
+    const versaoInicial =
+      versaoEdicaoEndereco.current;
 
-// Impede salvar novamente um endereço sem alterações.
+    async function consultarEnderecos() {
+      setCarregandoEnderecos(true);
+      setMensagemEndereco("");
 
-    if (enderecoSelecionadoId !== null) {
+      try {
+        const resposta = await fetch("/api/enderecos", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        });
 
-      setMensagemEndereco("Este endereço já está cadastrado.");
+        if (!resposta.ok) {
+          throw new Error(
+            "Não foi possível consultar os endereços."
+          );
+        }
 
-return;
+        const dados = await resposta.json();
 
+        const lista: EnderecoCheckout[] =
+          Array.isArray(dados.enderecos)
+            ? dados.enderecos
+            : [];
+
+        if (controller.signal.aborted) return;
+
+        setEnderecos(lista);
+
+        const principal =
+          lista.find((endereco) => endereco.principal) ??
+          lista[0];
+
+        if (
+          principal &&
+          versaoEdicaoEndereco.current === versaoInicial
+        ) {
+          preencherEndereco(principal);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setMensagemEndereco(
+            "Não foi possível carregar seus endereços."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCarregandoEnderecos(false);
+        }
+      }
     }
 
+    void consultarEnderecos();
 
+    return () => controller.abort();
+  }, [usuario?.id, carregandoUsuario]);
 
-// Valida os campos obrigatórios antes de enviar.
+  /* =======================================================
+     CONSULTA AUTOMÁTICA DE CEP — VIACEP
+     ======================================================= */
 
-    if (
+  async function consultarCEP(
+    cep: string,
+    versaoDaDigitacao: number
+  ) {
+    const numeros = somenteNumeros(cep);
 
-      !dadosEntrega.cep.trim() ||
+    if (numeros.length !== 8) return;
 
-      !dadosEntrega.endereco.trim() ||
+    consultaCepController.current?.abort();
 
-      !dadosEntrega.numero.trim() ||
+    const controller = new AbortController();
+    consultaCepController.current = controller;
 
-      !dadosEntrega.bairro.trim() ||
-
-      !dadosEntrega.cidade.trim() ||
-
-      !dadosEntrega.estado.trim()
-
-    ) {
-
-      setMensagemEndereco("Preencha todos os campos obrigatórios.");
-
-return;
-
-    }
-
-
-
-    setSalvandoEndereco(true);
-
-    setMensagemEndereco("");
-
-
+    setConsultandoCep(true);
+    setMensagemCep("");
 
     try {
-
-/* -----------------------------------------------------*
-
-        PREPARAR OS DADOS PARA A API
-
-*        ----------------------------------------------------- */
-
-
-
-const dados = {
-
-// Nome do destinatário do pedido.
-
-        destinatario: `${usuario.nome} ${usuario.sobrenome}`.trim(),
-
-
-
-// Dados de entrega preenchidos pelo cliente.
-
-        cep: dadosEntrega.cep,
-
-        logradouro: dadosEntrega.endereco,
-
-        numero: dadosEntrega.numero,
-
-        complemento: dadosEntrega.complemento,
-
-        bairro: dadosEntrega.bairro,
-
-        cidade: dadosEntrega.cidade,
-
-        estado: dadosEntrega.estado,
-
-      };
-
-
-
-/* -----------------------------------------------------*
-
-        ENVIAR O ENDEREÇO PARA O BACKEND
-
-*        ----------------------------------------------------- */
-
-
-
-const resposta = await fetch("/api/enderecos", {
-
-        method: "POST",
-
-        credentials: "same-origin",
-
-        headers: {
-
-          "Content-Type": "application/json",
-
-        },
-
-        body: JSON.stringify(dados),
-
-      });
-
-
-
-const resultado = await resposta.json();
-
-
+      const resposta = await fetch(
+        `https://viacep.com.br/ws/${numeros}/json/`,
+        { signal: controller.signal }
+      );
 
       if (!resposta.ok) {
-
         throw new Error(
-
-          resultado.erro ?? "Não foi possível salvar o endereço."
-
+          "Serviço de CEP indisponível. Preencha manualmente."
         );
-
       }
 
+      const dados: {
+        erro?: boolean;
+        logradouro?: string;
+        bairro?: string;
+        localidade?: string;
+        uf?: string;
+      } = await resposta.json();
 
+      if (
+        controller.signal.aborted ||
+        versaoEdicaoEndereco.current !==
+          versaoDaDigitacao
+      ) {
+        return;
+      }
 
-/* -----------------------------------------------------*
+      if (dados.erro) {
+        setMensagemCep(
+          "CEP não encontrado. Confira o número informado."
+        );
+        return;
+      }
 
-        ATUALIZAR OS ENDEREÇOS DO CHECKOUT
+      // Número e complemento são preservados.
+      setDadosEntrega((anterior) => ({
+        ...anterior,
+        endereco: dados.logradouro ?? "",
+        bairro: dados.bairro ?? "",
+        cidade: dados.localidade ?? "",
+        estado: dados.uf ?? "",
+      }));
 
-*        ----------------------------------------------------- */
+      if (!dados.logradouro || !dados.bairro) {
+        setMensagemCep(
+          "CEP localizado. Complete os campos não informados."
+        );
+      }
+    } catch (erro) {
+      if (
+        !controller.signal.aborted &&
+        versaoEdicaoEndereco.current ===
+          versaoDaDigitacao
+      ) {
+        setMensagemCep(
+          erro instanceof Error
+            ? erro.message
+            : "Não foi possível consultar o CEP."
+        );
+      }
+    } finally {
+      if (consultaCepController.current === controller) {
+        consultaCepController.current = null;
+        setConsultandoCep(false);
+      }
+    }
+  }
 
+  function alterarCEP(valor: string) {
+    const numeros = somenteNumeros(valor).slice(0, 8);
 
+    const cepFormatado =
+      numeros.length > 5
+        ? `${numeros.slice(0, 5)}-${numeros.slice(5)}`
+        : numeros;
 
-const enderecoSalvo = resultado.endereco as EnderecoCheckout;
+    registrarEdicaoEndereco();
 
+    const versaoAtual =
+      versaoEdicaoEndereco.current;
 
+    // Limpa os dados de um CEP anterior.
+    setDadosEntrega((anterior) => ({
+      ...anterior,
+      cep: cepFormatado,
+      endereco: "",
+      bairro: "",
+      cidade: "",
+      estado: "",
+    }));
 
-// Inclui o endereço retornado pelo MySQL na lista.
+    if (numeros.length === 8) {
+      void consultarCEP(numeros, versaoAtual);
+    }
+  }
+
+  /* =======================================================
+     SALVAR ENDEREÇO NO MYSQL
+     ======================================================= */
+
+  async function salvarEndereco() {
+    if (salvandoEndereco) return;
+
+    if (!usuario) {
+      setMensagemEndereco(
+        "Entre na sua conta para salvar o endereço."
+      );
+      return;
+    }
+
+    if (enderecoSelecionadoId !== null) {
+      setMensagemEndereco(
+        "Este endereço já está cadastrado."
+      );
+      return;
+    }
+
+    if (
+      !/^\d{8}$/.test(cepCotacao) ||
+      !dadosEntrega.endereco.trim() ||
+      !dadosEntrega.numero.trim() ||
+      !dadosEntrega.bairro.trim() ||
+      !dadosEntrega.cidade.trim() ||
+      !/^[A-Z]{2}$/.test(dadosEntrega.estado.trim())
+    ) {
+      setMensagemEndereco(
+        "Preencha corretamente todos os campos obrigatórios."
+      );
+      return;
+    }
+
+    setSalvandoEndereco(true);
+    setMensagemEndereco("");
+
+    try {
+      const resposta = await fetch("/api/enderecos", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          destinatario:
+            `${usuario.nome} ${usuario.sobrenome}`.trim(),
+          cep: dadosEntrega.cep,
+          logradouro: dadosEntrega.endereco,
+          numero: dadosEntrega.numero,
+          complemento: dadosEntrega.complemento,
+          bairro: dadosEntrega.bairro,
+          cidade: dadosEntrega.cidade,
+          estado: dadosEntrega.estado,
+        }),
+      });
+
+      const resultado = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(
+          resultado.erro ??
+            "Não foi possível salvar o endereço."
+        );
+      }
+
+      const enderecoSalvo =
+        resultado.endereco as EnderecoCheckout;
 
       setEnderecos((anteriores) => [
-
         enderecoSalvo,
-
-...anteriores,
-
+        ...anteriores,
       ]);
-
-
-
-// Seleciona o endereço recém-cadastrado.
 
       preencherEndereco(enderecoSalvo);
 
-
-
-      setMensagemEndereco("Endereço salvo com sucesso.");
-
-    } catch (error) {
-
       setMensagemEndereco(
-
-        error instanceof Error
-
-          ? error.message
-
-          : "Não foi possível salvar o endereço."
-
+        "Endereço salvo com sucesso."
       );
-
+    } catch (erro) {
+      setMensagemEndereco(
+        erro instanceof Error
+          ? erro.message
+          : "Não foi possível salvar o endereço."
+      );
     } finally {
-
-// Libera o botão após a conclusão da operação.
-
       setSalvandoEndereco(false);
-
     }
-
   }
 
+  /* =======================================================
+     CALCULAR FRETE — API MELHOR ENVIO
+     ======================================================= */
 
+  async function calcularFrete() {
+    setErroFrete("");
+    setMensagemPagamento("");
+    setFreteSelecionadoId(null);
+    setOpcoesFrete([]);
 
+    if (!usuario) {
+      setErroFrete(
+        "Entre na sua conta para calcular o frete."
+      );
+      return;
+    }
+
+    if (!/^\d{8}$/.test(cepCotacao)) {
+      setErroFrete(
+        "Informe um CEP de entrega válido."
+      );
+      return;
+    }
+
+    if (items.length === 0) {
+      setErroFrete("Sua sacola está vazia.");
+      return;
+    }
+
+    // O ID textual do carrinho não substitui
+    // o ID numérico da variante no banco.
+    const itemSemVariante = items.some(
+      (item) =>
+        !Number.isSafeInteger(item.variantId) ||
+        (item.variantId ?? 0) <= 0
+    );
+
+    if (itemSemVariante) {
+      setErroFrete(
+        "Existem produtos antigos na sacola. Remova-os e adicione novamente pela loja."
+      );
+      return;
+    }
+
+    cotacaoController.current?.abort();
+
+    const controller = new AbortController();
+    cotacaoController.current = controller;
+
+    setCotandoFrete(true);
+
+    try {
+      const resposta = await fetch(
+        "/api/frete/cotacao",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            cepDestino: cepCotacao,
+            itens: items.map((item) => ({
+              variantId: item.variantId,
+              quantity: item.quantity,
+            })),
+          }),
+        }
+      );
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(
+          dados.erro ??
+            "Não foi possível calcular o frete."
+        );
+      }
+
+      const opcoes: OpcaoFreteCheckout[] =
+        Array.isArray(dados.opcoes)
+          ? dados.opcoes.filter(
+              (opcao: OpcaoFreteCheckout) =>
+                Number.isSafeInteger(opcao.id) &&
+                Number.isFinite(opcao.preco) &&
+                opcao.preco >= 0
+            )
+          : [];
+
+      if (controller.signal.aborted) return;
+
+      setOpcoesFrete(opcoes);
+
+      if (opcoes.length === 0) {
+        setErroFrete(
+          "Nenhuma modalidade de entrega disponível para este CEP."
+        );
+      }
+    } catch (erro) {
+      if (!controller.signal.aborted) {
+        setErroFrete(
+          erro instanceof Error
+            ? erro.message
+            : "Falha ao consultar o frete."
+        );
+      }
+    } finally {
+      if (cotacaoController.current === controller) {
+        cotacaoController.current = null;
+        setCotandoFrete(false);
+      }
+    }
+  }
+
+  const freteSelecionado = opcoesFrete.find(
+    (opcao) => opcao.id === freteSelecionadoId
+  );
+
+  const total =
+    subtotal + (freteSelecionado?.preco ?? 0);
+
+  /* =======================================================
+     CONTINUAR PARA PAGAMENTO
+     Ainda não cria pedido nem cobrança.
+     ======================================================= */
+
+  function continuarParaPagamento() {
+    setMensagemPagamento("");
+
+    if (!usuario) {
+      setMensagemPagamento(
+        "Entre na sua conta para continuar."
+      );
+      return;
+    }
+
+    if (items.length === 0) {
+      setMensagemPagamento(
+        "Adicione produtos à sacola."
+      );
+      return;
+    }
+
+    if (
+      !/^\d{8}$/.test(cepCotacao) ||
+      !dadosEntrega.endereco.trim() ||
+      !dadosEntrega.numero.trim() ||
+      !dadosEntrega.bairro.trim() ||
+      !dadosEntrega.cidade.trim() ||
+      !/^[A-Z]{2}$/.test(dadosEntrega.estado.trim())
+    ) {
+      setMensagemPagamento(
+        "Complete o endereço de entrega."
+      );
+      return;
+    }
+
+    if (enderecoSelecionadoId === null) {
+      setMensagemPagamento(
+        "Salve ou selecione um endereço de entrega."
+      );
+      return;
+    }
+
+    if (!freteSelecionado) {
+      setMensagemPagamento(
+        "Calcule o frete e selecione uma opção de entrega."
+      );
+      return;
+    }
+
+    // Esta etapa será conectada à API de pedidos
+    // e ao provedor de pagamentos posteriormente.
+    setMensagemPagamento(
+      "Endereço e frete validados. A integração de pagamento ainda não está disponível. Nenhum pedido ou cobrança foi criado."
+    );
+  }
+
+  /* =======================================================
+     INTERFACE DO CHECKOUT
+     ======================================================= */
+
+  return (
+    <main className="checkoutPage">
+      <header className="checkoutHeader">
+        <Link href="/" className="checkoutLogo">
+          PÁDUA
+        </Link>
+
+        <Link href="/" className="checkoutBack">
+          ← CONTINUAR COMPRANDO
+        </Link>
+      </header>
+
+      <div className="checkoutLayout">
+        {/* ================================================
+            LADO ESQUERDO — CLIENTE E ENTREGA
+            ================================================ */}
+
+        <section className="checkoutForm">
+          <span className="checkoutEyebrow">
+            CHECKOUT
+          </span>
+
+          <h1>
+            FINALIZAR
+            <br />
+            COMPRA
+          </h1>
+
+          {/* CONTATO */}
+
+          <div className="checkoutSection">
+            <div className="checkoutSectionHeader">
+              <span>01</span>
+              <h2>CONTATO</h2>
+            </div>
+
+            {carregandoUsuario && (
+              <p role="status">
+                CARREGANDO SEUS DADOS...
+              </p>
+            )}
+
+            {erroUsuario && (
+              <p role="alert">{erroUsuario}</p>
+            )}
+
+            {!carregandoUsuario &&
+              !erroUsuario &&
+              !usuario && (
+                <p>
+                  PARA FINALIZAR SUA COMPRA,{" "}
+                  <Link href="/login">
+                    ENTRE NA SUA CONTA
+                  </Link>
+                  .
+                </p>
+              )}
+
+            <div className="checkoutFields">
+              <label className="checkoutField checkoutFieldFull">
+                <span>E-MAIL</span>
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="seu@email.com"
+                  value={usuario?.email ?? ""}
+                  readOnly
+                  autoComplete="email"
+                />
+              </label>
+
+              <label className="checkoutField checkoutFieldFull">
+                <span>TELEFONE</span>
+                <input
+                  type="tel"
+                  name="telefone"
+                  placeholder="(11) 99999-9999"
+                  value={usuario?.telefone ?? ""}
+                  readOnly
+                  autoComplete="tel"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* ENTREGA */}
+
+          <div className="checkoutSection">
+            <div className="checkoutSectionHeader">
+              <span>02</span>
+              <h2>ENTREGA</h2>
+            </div>
+
+            {carregandoEnderecos && usuario && (
+              <p role="status">
+                CARREGANDO ENDEREÇOS...
+              </p>
+            )}
+
+            {!carregandoEnderecos &&
+              enderecos.length > 0 && (
+                <div className="checkoutSavedAddresses">
+                  <p>SEUS ENDEREÇOS CADASTRADOS</p>
+
+                  {enderecos.map((endereco) => (
+                    <button
+                      key={endereco.id}
+                      type="button"
+                      onClick={() =>
+                        preencherEndereco(endereco)
+                      }
+                      aria-pressed={
+                        enderecoSelecionadoId ===
+                        endereco.id
+                      }
+                    >
+                      {endereco.apelido ||
+                        "ENDEREÇO DE ENTREGA"}
+
+                      {endereco.principal
+                        ? " — PRINCIPAL"
+                        : ""}
+
+                      {" · "}
+                      {endereco.logradouro},{" "}
+                      {endereco.numero}
+                      {" — "}
+                      {endereco.cidade}/
+                      {endereco.estado}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+            <div className="checkoutFields">
+              <label className="checkoutField">
+                <span>NOME</span>
+                <input
+                  type="text"
+                  name="nome"
+                  placeholder="Nome"
+                  value={usuario?.nome ?? ""}
+                  readOnly
+                  autoComplete="given-name"
+                />
+              </label>
+
+              <label className="checkoutField">
+                <span>SOBRENOME</span>
+                <input
+                  type="text"
+                  name="sobrenome"
+                  placeholder="Sobrenome"
+                  value={usuario?.sobrenome ?? ""}
+                  readOnly
+                  autoComplete="family-name"
+                />
+              </label>
+
+              {/* CEP */}
+
+              <label className="checkoutField checkoutFieldFull">
+                <span>CEP</span>
+                <input
+                  type="text"
+                  name="cep"
+                  placeholder="00000-000"
+                  autoComplete="postal-code"
+                  inputMode="numeric"
+                  maxLength={9}
+                  value={dadosEntrega.cep}
+                  onChange={(event) =>
+                    alterarCEP(event.target.value)
+                  }
+                />
+              </label>
+
+              {consultandoCep && (
+                <p role="status">
+                  CONSULTANDO CEP...
+                </p>
+              )}
+
+              {mensagemCep && (
+                <p role="status">
+                  {mensagemCep}
+                </p>
+              )}
+
+              {/* LOGRADOURO */}
+
+              <label className="checkoutField checkoutFieldFull">
+                <span>ENDEREÇO</span>
+                <input
+                  type="text"
+                  name="endereco"
+                  placeholder="Rua / Avenida"
+                  autoComplete="address-line1"
+                  maxLength={200}
+                  value={dadosEntrega.endereco}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "endereco",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* NÚMERO */}
+
+              <label className="checkoutField">
+                <span>NÚMERO</span>
+                <input
+                  type="text"
+                  name="numero"
+                  placeholder="Número"
+                  maxLength={20}
+                  value={dadosEntrega.numero}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "numero",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* COMPLEMENTO */}
+
+              <label className="checkoutField">
+                <span>COMPLEMENTO</span>
+                <input
+                  type="text"
+                  name="complemento"
+                  placeholder="Apto, bloco..."
+                  autoComplete="address-line2"
+                  maxLength={150}
+                  value={dadosEntrega.complemento}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "complemento",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* BAIRRO */}
+
+              <label className="checkoutField checkoutFieldFull">
+                <span>BAIRRO</span>
+                <input
+                  type="text"
+                  name="bairro"
+                  placeholder="Bairro"
+                  maxLength={100}
+                  value={dadosEntrega.bairro}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "bairro",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* CIDADE */}
+
+              <label className="checkoutField">
+                <span>CIDADE</span>
+                <input
+                  type="text"
+                  name="cidade"
+                  placeholder="Cidade"
+                  autoComplete="address-level2"
+                  maxLength={100}
+                  value={dadosEntrega.cidade}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "cidade",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* ESTADO */}
+
+              <label className="checkoutField">
+                <span>ESTADO</span>
+                <input
+                  type="text"
+                  name="estado"
+                  placeholder="SP"
+                  autoComplete="address-level1"
+                  maxLength={2}
+                  value={dadosEntrega.estado}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "estado",
+                      event.target.value.toUpperCase()
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            {mensagemEndereco && (
+              <p role="status">
+                {mensagemEndereco}
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="checkoutContinue"
+              onClick={() => void salvarEndereco()}
+              disabled={
+                salvandoEndereco ||
+                carregandoUsuario ||
+                carregandoEnderecos ||
+                !usuario
+              }
+            >
+              {salvandoEndereco
+                ? "SALVANDO ENDEREÇO..."
+                : "SALVAR ENDEREÇO"}
+            </button>
+          </div>
+        </section>
+
+        {/* ================================================
+            LADO DIREITO — RESUMO DO PEDIDO
+            ================================================ */}
+
+        <aside className="checkoutSummary">
+          <div className="checkoutSummaryHeader">
+            <span>SEU PEDIDO</span>
+            <span>{quantidadeItens} ITENS</span>
+          </div>
+
+          {items.length === 0 ? (
+            <div className="checkoutEmpty">
+              <p>SUA SACOLA ESTÁ VAZIA.</p>
+
+              <Link href="/">
+                VOLTAR PARA A LOJA →
+              </Link>
+            </div>
+          ) : (
+            <>
+              {/* PRODUTOS */}
+
+              <div className="checkoutItems">
+                {items.map((item) => (
+                  <div
+                    className="checkoutItem"
+                    key={item.id}
+                  >
+                    <div className="checkoutItemImage">
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                      />
+                      <span>{item.quantity}</span>
+                    </div>
+
+                    <div className="checkoutItemInfo">
+                      <div>
+                        <h3>{item.name}</h3>
+
+                        <p>
+                          {item.color} / {item.size}
+                        </p>
+                      </div>
+
+                      <strong>
+                        {formatarMoeda(
+                          item.price * item.quantity
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* =========================================
+                  CÁLCULO DE FRETE
+                  ========================================= */}
+
+              <div
+                style={{
+                  padding: "18px 0",
+                  borderTop: "1px solid #444",
+                  borderBottom: "1px solid #444",
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  ENTREGA — CEP{" "}
+                  {dadosEntrega.cep ||
+                    "NÃO INFORMADO"}
+                </p>
+
+                <button
+                  type="button"
+                  className="checkoutContinue"
+                  onClick={() =>
+                    void calcularFrete()
+                  }
+                  disabled={
+                    cotandoFrete ||
+                    carregandoUsuario
+                  }
+                >
+                  {cotandoFrete
+                    ? "CALCULANDO FRETE..."
+                    : "CALCULAR FRETE"}
+                </button>
+
+                {erroFrete && (
+                  <p
+                    role="alert"
+                    style={{
+                      color: "#fca5a5",
+                      marginTop: 12,
+                      fontSize: 13,
+                    }}
+                  >
+                    {erroFrete}
+                  </p>
+                )}
+
+                {/* OPÇÕES RETORNADAS PELA API */}
+
+                {opcoesFrete.length > 0 && (
+                  <fieldset
+                    style={{
+                      border: 0,
+                      padding: 0,
+                      margin: "16px 0 0",
+                    }}
+                  >
+                    <legend
+                      style={{
+                        fontSize: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      ESCOLHA A ENTREGA
+                    </legend>
+
+                    {opcoesFrete.map((opcao) => (
+                      <label
+                        key={opcao.id}
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                          padding: "10px 0",
+                          cursor: "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="frete"
+                          checked={
+                            freteSelecionadoId ===
+                            opcao.id
+                          }
+                          onChange={() => {
+                            setFreteSelecionadoId(
+                              opcao.id
+                            );
+                            setMensagemPagamento("");
+                          }}
+                        />
+
+                        <span style={{ flex: 1 }}>
+                          {opcao.transportadora}
+                          {" — "}
+                          {opcao.nome}
+
+                          {opcao.prazoDias !== null
+                            ? ` · ${opcao.prazoDias} dias`
+                            : ""}
+                        </span>
+
+                        <strong>
+                          {formatarMoeda(
+                            opcao.preco
+                          )}
+                        </strong>
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+              </div>
+
+              {/* VALORES */}
+
+              <div className="checkoutTotals">
+                <div>
+                  <span>SUBTOTAL</span>
+                  <strong>
+                    {formatarMoeda(subtotal)}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>FRETE</span>
+
+                  <strong>
+                    {freteSelecionado
+                      ? formatarMoeda(
+                          freteSelecionado.preco
+                        )
+                      : "CALCULAR FRETE"}
+                  </strong>
+                </div>
+
+                <div className="checkoutTotal">
+                  <span>TOTAL</span>
+
+                  <strong>
+                    {formatarMoeda(total)}
+                  </strong>
+                </div>
+              </div>
+
+              {/* PRÓXIMA ETAPA */}
+
+              <button
+                type="button"
+                className="checkoutContinue"
+                onClick={
+                  continuarParaPagamento
+                }
+              >
+                <span>
+                  CONTINUAR PARA PAGAMENTO
+                </span>
+
+                <span>→</span>
+              </button>
+
+              {mensagemPagamento && (
+                <p
+                  role="status"
+                  style={{
+                    marginTop: 14,
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {mensagemPagamento}
+                </p>
+              )}
+            </>
+          )}
+        </aside>
+      </div>
+    </main>
+  );
 }
