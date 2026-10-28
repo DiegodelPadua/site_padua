@@ -28,6 +28,10 @@ type Produto = {
   nome: string;
   descricao: string | null;
   preco: string;
+
+  // Peso individual armazenado no MySQL.
+  pesoGramas: number | null;
+
   ativo: boolean;
   categoria: {
     id: number;
@@ -43,7 +47,9 @@ export default function AdminProdutosPage() {
   // Campos do formulário.
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
+  // Dados do produto que será cadastrado.
   const [preco, setPreco] = useState("");
+  const [pesoGramas, setPesoGramas] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
 
   // Controle da interface.
@@ -55,6 +61,24 @@ export default function AdminProdutosPage() {
   );
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
+
+
+  /* =======================================================
+   ESTADOS DA EDIÇÃO DE PRODUTOS
+   ======================================================= */
+
+// Identifica o produto selecionado para edição.
+const [produtoEditando, setProdutoEditando] = useState<number | null>(null);
+
+// Campos independentes do formulário de cadastro.
+const [editNome, setEditNome] = useState("");
+const [editDescricao, setEditDescricao] = useState("");
+const [editPreco, setEditPreco] = useState("");
+const [editPesoGramas, setEditPesoGramas] = useState("");
+const [editCategoriaId, setEditCategoriaId] = useState("");
+
+// Controla o envio das alterações.
+const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
   /* =======================================================
      CONSULTAR CATEGORIAS
@@ -162,6 +186,19 @@ export default function AdminProdutosPage() {
       return;
     }
 
+    // O peso é obrigatório para calcular o frete.
+    // Aceitamos somente números inteiros positivos em gramas.
+    const pesoNumerico = Number(pesoGramas);
+
+    if (
+      !/^[1-9]\d*$/.test(pesoGramas.trim()) ||
+      !Number.isSafeInteger(pesoNumerico) ||
+      pesoNumerico > 100000
+    ) {
+      setErro("Informe um peso válido em gramas, entre 1 e 100000.");
+      return;
+    }
+
     try {
       setSalvando(true);
 
@@ -175,6 +212,7 @@ export default function AdminProdutosPage() {
           nome: nome.trim(),
           descricao: descricao.trim(),
           preco: precoFormatado,
+          pesoGramas: pesoNumerico,
           categoriaId: Number(categoriaId),
         }),
       });
@@ -187,10 +225,11 @@ export default function AdminProdutosPage() {
         );
       }
 
-      // Limpa o formulário após salvar.
+      // Limpa todos os campos após cadastrar o produto.
       setNome("");
       setDescricao("");
       setPreco("");
+      setPesoGramas("");
       setCategoriaId("");
 
       setMensagem("Produto cadastrado com sucesso!");
@@ -278,6 +317,130 @@ export default function AdminProdutosPage() {
       currency: "BRL",
     });
   }
+
+  /* =======================================================
+   INICIAR EDIÇÃO DE PRODUTO
+   ======================================================= */
+
+function iniciarEdicao(produto: Produto) {
+  // Limpa mensagens anteriores.
+  setErro("");
+  setMensagem("");
+
+  // Identifica o produto e preenche os campos.
+  setProdutoEditando(produto.id);
+  setEditNome(produto.nome);
+  setEditDescricao(produto.descricao ?? "");
+  setEditPreco(produto.preco.replace(".", ","));
+  setEditPesoGramas(
+    produto.pesoGramas === null ? "" : String(produto.pesoGramas)
+  );
+  setEditCategoriaId(String(produto.categoria.id));
+}
+
+/* =======================================================
+   CANCELAR EDIÇÃO
+   ======================================================= */
+
+function cancelarEdicao() {
+  if (salvandoEdicao) return;
+
+  setProdutoEditando(null);
+  setErro("");
+}
+
+/* =======================================================
+   SALVAR ALTERAÇÕES DO PRODUTO
+   ======================================================= */
+
+async function salvarEdicao(
+  evento: React.FormEvent<HTMLFormElement>
+) {
+  evento.preventDefault();
+
+  if (produtoEditando === null || salvandoEdicao) return;
+
+  setErro("");
+  setMensagem("");
+
+  // Reutiliza a validação de preço do cadastro.
+  const precoFormatado = normalizarPreco(editPreco);
+
+  if (!precoFormatado || Number(precoFormatado) <= 0) {
+    setErro("Informe um preço válido, como 149,90.");
+    return;
+  }
+
+  // Valida o peso em gramas.
+  const pesoTexto = editPesoGramas.trim();
+  const pesoNumerico = Number(pesoTexto);
+
+  if (
+    !/^[1-9]\d*$/.test(pesoTexto) ||
+    !Number.isSafeInteger(pesoNumerico) ||
+    pesoNumerico > 100000
+  ) {
+    setErro("Informe um peso inteiro entre 1 e 100000 gramas.");
+    return;
+  }
+
+  // Confirma a categoria selecionada.
+  const categoriaNumero = Number(editCategoriaId);
+
+  if (
+    !Number.isSafeInteger(categoriaNumero) ||
+    categoriaNumero <= 0
+  ) {
+    setErro("Selecione uma categoria válida.");
+    return;
+  }
+
+  try {
+    setSalvandoEdicao(true);
+
+    // Atualiza apenas os dados principais do produto.
+    const resposta = await fetch(
+      `/api/admin/produtos/${produtoEditando}`,
+      {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          nome: editNome.trim(),
+          descricao: editDescricao.trim(),
+          preco: precoFormatado,
+          pesoGramas: pesoNumerico,
+          categoriaId: categoriaNumero,
+        }),
+      }
+    );
+
+    const dados = await resposta.json();
+
+    if (!resposta.ok) {
+      throw new Error(
+        dados.erro || "Não foi possível atualizar o produto."
+      );
+    }
+
+    // Recarrega a lista diretamente do MySQL.
+    await carregarProdutos();
+
+    // Fecha o formulário após a atualização.
+    setProdutoEditando(null);
+    setMensagem("Produto atualizado com sucesso!");
+  } catch (error) {
+    setErro(
+      error instanceof Error
+        ? error.message
+        : "Erro inesperado ao editar produto."
+    );
+  } finally {
+    setSalvandoEdicao(false);
+  }
+}
 
   /* =======================================================
      ESTILOS COMPARTILHADOS
@@ -393,6 +556,9 @@ export default function AdminProdutosPage() {
               </select>
             </label>
 
+            {/* ===================================================
+                CAMPO: PREÇO DO PRODUTO
+                =================================================== */}
             <label>
               Preço (R$)
               <input
@@ -404,15 +570,42 @@ export default function AdminProdutosPage() {
                 required
               />
             </label>
-          </div>
 
-          <label
-            style={{
-              display: "block",
-              marginTop: "20px",
-            }}
-          >
-            Descrição
+            {/* ===================================================
+                CAMPO: PESO DO PRODUTO
+                Utilizado no cálculo de frete da Melhor Envio.
+                O peso deve ser informado em gramas.
+                Exemplo: 300 = 300 gramas.
+                =================================================== */}
+            <label>
+              Peso do produto (gramas)
+              <input
+                type="number"
+                style={{ ...estiloCampo, marginTop: "8px" }}
+                value={pesoGramas}
+                onChange={(e) => setPesoGramas(e.target.value)}
+                placeholder="Ex.: 300"
+                min={1}
+                max={100000}
+                step={1}
+                required
+              />
+            </label>
+
+            {/* Fecha a grade dos campos principais do formulário. */}
+            </div>
+
+            {/* ===================================================
+                CAMPO: DESCRIÇÃO DO PRODUTO
+                =================================================== */}
+            <label
+              style={{
+                display: "block",
+                marginTop: "20px",
+              }}
+            >
+              Descrição
+
             <textarea
               style={{
                 ...estiloCampo,
@@ -565,6 +758,10 @@ export default function AdminProdutosPage() {
                       {/* Mantém o gerenciamento de variantes
                           que já existe no projeto. */}
 
+                     {/* ===================================================
+                          AÇÕES DO PRODUTO
+                          Cada botão possui sua própria funcionalidade.
+                          =================================================== */}
                       <div
                         style={{
                           display: "flex",
@@ -573,6 +770,24 @@ export default function AdminProdutosPage() {
                           alignItems: "center",
                         }}
                       >
+                        {/* 1. EDITAR PRODUTO
+                            Abre o formulário de edição sem navegar para outra página. */}
+                        <button
+                          type="button"
+                          disabled={salvandoEdicao || salvando}
+                          onClick={() => iniciarEdicao(produto)}
+                          style={{
+                            ...estiloAcao,
+                            border: "none",
+                            cursor: "pointer",
+                            opacity: salvandoEdicao || salvando ? 0.5 : 1,
+                          }}
+                        >
+                          EDITAR PRODUTO
+                        </button>
+
+                        {/* 2. GERENCIAR VARIANTES
+                            Mantém o acesso ao cadastro de tamanhos, cores e estoque. */}
                         <Link
                           href={`/admin/produtos/${produto.id}/variantes`}
                           style={estiloAcao}
@@ -580,17 +795,17 @@ export default function AdminProdutosPage() {
                           GERENCIAR VARIANTES
                         </Link>
 
-                        {/* NOVO: acesso à página de imagens
-                            do produto selecionado. */}
-
+                        {/* 3. GERENCIAR IMAGENS
+                            Mantém o acesso às fotografias do produto. */}
                         <Link
                           href={`/admin/produtos/${produto.id}/imagens`}
                           style={estiloAcao}
                         >
                           GERENCIAR IMAGENS
                         </Link>
-                        
-                        {/* PUBLICAÇÃO DO PRODUTO */}
+
+                        {/* 4. PUBLICAR OU RETORNAR PARA RASCUNHO
+                            Preserva a lógica de publicação existente. */}
                         <button
                           type="button"
                           disabled={publicandoId !== null}
@@ -616,7 +831,6 @@ export default function AdminProdutosPage() {
                               ? "VOLTAR PARA RASCUNHO"
                               : "PUBLICAR"}
                         </button>
-
                       </div>
                     </td>
                   </tr>
@@ -624,8 +838,183 @@ export default function AdminProdutosPage() {
               </tbody>
             </table>
           </div>
+
         )}
       </section>
+
+      {/* ===================================================
+          FORMULÁRIO DE EDIÇÃO DE PRODUTO
+          Exibido somente quando um produto é selecionado.
+          =================================================== */}
+      {produtoEditando !== null && (
+        <section
+          aria-label="Editar produto"
+          style={{
+            background: "#fff",
+            border: "1px solid #ddd",
+            padding: "32px",
+            marginTop: "32px",
+          }}
+        >
+          <h2 style={{ fontSize: "26px", marginBottom: "12px" }}>
+            Editar produto #{produtoEditando}
+          </h2>
+
+          <p style={{ color: "#666", marginBottom: "24px" }}>
+            Atualize os dados principais do produto. As imagens,
+            variantes, estoque e publicação serão preservados.
+          </p>
+
+          <form onSubmit={salvarEdicao}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: "20px",
+              }}
+            >
+              {/* Nome do produto */}
+              <label>
+                Nome do produto
+                <input
+                  style={{ ...estiloCampo, marginTop: "8px" }}
+                  value={editNome}
+                  onChange={(e) => setEditNome(e.target.value)}
+                  maxLength={150}
+                  required
+                  disabled={salvandoEdicao}
+                />
+              </label>
+
+              {/* Categoria do produto */}
+              <label>
+                Categoria
+                <select
+                  style={{ ...estiloCampo, marginTop: "8px" }}
+                  value={editCategoriaId}
+                  onChange={(e) => setEditCategoriaId(e.target.value)}
+                  required
+                  disabled={salvandoEdicao}
+                >
+                  <option value="">Selecione uma categoria</option>
+
+                  {categorias.map((categoria) => (
+                    <option key={categoria.id} value={categoria.id}>
+                      {categoria.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {/* Preço em reais */}
+              <label>
+                Preço (R$)
+                <input
+                  style={{ ...estiloCampo, marginTop: "8px" }}
+                  value={editPreco}
+                  onChange={(e) => setEditPreco(e.target.value)}
+                  placeholder="149,90"
+                  inputMode="decimal"
+                  required
+                  disabled={salvandoEdicao}
+                />
+              </label>
+
+              {/* Peso usado na cotação do Melhor Envio */}
+              <label>
+                Peso do produto (gramas)
+                <input
+                  type="number"
+                  style={{ ...estiloCampo, marginTop: "8px" }}
+                  value={editPesoGramas}
+                  onChange={(e) => setEditPesoGramas(e.target.value)}
+                  min={1}
+                  max={100000}
+                  step={1}
+                  placeholder="Ex.: 300"
+                  required
+                  disabled={salvandoEdicao}
+                />
+              </label>
+            </div>
+
+            {/* Descrição completa */}
+            <label
+              style={{
+                display: "block",
+                marginTop: "20px",
+              }}
+            >
+              Descrição
+              <textarea
+                style={{
+                  ...estiloCampo,
+                  marginTop: "8px",
+                  minHeight: "110px",
+                  resize: "vertical",
+                }}
+                value={editDescricao}
+                onChange={(e) => setEditDescricao(e.target.value)}
+                maxLength={10000}
+                disabled={salvandoEdicao}
+              />
+            </label>
+
+            {/* Mensagem de erro da edição */}
+            {erro && (
+              <p
+                role="alert"
+                style={{ color: "#b91c1c", marginTop: "20px" }}
+              >
+                {erro}
+              </p>
+            )}
+
+            {/* Botões para salvar ou cancelar */}
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                flexWrap: "wrap",
+                marginTop: "24px",
+              }}
+            >
+              <button
+                type="submit"
+                disabled={salvandoEdicao}
+                style={{
+                  ...estiloAcao,
+                  border: "none",
+                  cursor: salvandoEdicao ? "wait" : "pointer",
+                  opacity: salvandoEdicao ? 0.6 : 1,
+                }}
+              >
+                {salvandoEdicao
+                  ? "SALVANDO..."
+                  : "SALVAR ALTERAÇÕES"}
+              </button>
+
+              <button
+                type="button"
+                onClick={cancelarEdicao}
+                disabled={salvandoEdicao}
+                style={{
+                  padding: "12px 18px",
+                  background: "#fff",
+                  color: "#171717",
+                  border: "1px solid #aaa",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                CANCELAR
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
     </main>
   );
 }
+

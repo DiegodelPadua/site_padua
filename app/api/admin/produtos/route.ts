@@ -164,6 +164,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    /* =======================================================
+       VALIDAÇÃO DO PESO DO PRODUTO
+       ======================================================= */
+
+      // O peso deve ser informado em gramas.
+     // Não aceitamos valores negativos, decimais ou excessivos.
+     if (
+       typeof entrada.pesoGramas !== "number" ||
+       !Number.isSafeInteger(entrada.pesoGramas) ||
+       entrada.pesoGramas < 1 ||
+       entrada.pesoGramas > 100000
+      ) {
+        return NextResponse.json(
+         { erro: "Informe um peso válido entre 1 e 100000 gramas." },
+         { status: 400 }
+        );
+     }
+
     // Valida a descrição opcional.
     if (
       entrada.descricao !== undefined &&
@@ -229,10 +247,14 @@ export async function POST(request: NextRequest) {
             ? entrada.descricao.trim() || null
             : null,
         preco: entrada.preco,
+        // Peso individual utilizado na cotação de frete.
+        pesoGramas: entrada.pesoGramas,
         categoriaId: entrada.categoriaId,
         ativo: false,
         destaque: false,
+
       },
+
     });
 
     // Converte o Decimal para string na resposta.
