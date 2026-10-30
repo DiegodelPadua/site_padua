@@ -1,88 +1,182 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
-import { cotarFreteMelhorEnvio } from "../../../../src/services/melhorEnvioService";
 
-/**
- * PÁDUA CULTURE — POST /api/frete/cotacao
- * O banco de dados é a fonte de verdade para estoque, preço e peso.
- * Cada volume representa uma embalagem física; não compra etiquetas.
- */
+import { NextRequest, NextResponse } from "next/server";
+
+import { prisma } from "../../../../lib/prisma";
+
+import {
+  cotarFreteMelhorEnvio,
+} from "../../../../src/services/melhorEnvioService";
+
+import {
+  capacidadePorCategoria,
+  montarVolumesFrete,
+  EmbalagemFreteError,
+  type UnidadeEmbalagem,
+} from "../../../../src/services/embalagemFreteService";
+
+/* =========================================================
+   PÁDUA CULTURE - API DE COTAÇÃO DE FRETE
+   =========================================================
+   POST /api/frete/cotacao
+
+   O banco é a fonte oficial de preços, pesos e estoque.
+
+   As embalagens são calculadas por um serviço
+   compartilhado com o módulo de pedidos.
+
+   Esta rota não compra etiquetas.
+   ========================================================= */
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const EMBALAGEM = {
-  width: 25,
-  height: 5,
-  length: 30,
-  pesoGramas: 200,
-} as const;
+/* =========================================================
+   TIPOS E FUNÇÕES AUXILIARES
+   ========================================================= */
 
-const MAX_EMBALAGENS = 20;
-
-type ItemEntrada = { variantId: number; quantity: number };
-type Unidade = { pesoGramas: number; valor: number; categoria: string };
-type Caixa = { unidades: Unidade[]; capacidade: number; categoria: string };
+type ItemEntrada = {
+  variantId: number;
+  quantity: number;
+};
 
 function inteiroPositivo(valor: unknown): valor is number {
-  return typeof valor === "number" && Number.isSafeInteger(valor) && valor > 0;
+  return (
+    typeof valor === "number" &&
+    Number.isSafeInteger(valor) &&
+    valor > 0
+  );
 }
 
-function capacidadePorCategoria(slug: string): number | null {
-  // Upcycling e categorias sem configuração exigem embalagem própria.
-  const normalizado = slug.toLowerCase().trim();
-  if (normalizado === "camisetas") return 2;
-  if (["calcas", "bonés", "bones", "shorts"].includes(normalizado)) return 1;
-  return null;
-}
+/* =========================================================
+   POST - CALCULAR FRETE
+   ========================================================= */
 
 export async function POST(request: NextRequest) {
   try {
+    /* =====================================================
+       1. RECEBER JSON
+       ===================================================== */
+
     let corpo: unknown;
+
     try {
       corpo = await request.json();
     } catch {
-      return NextResponse.json({ erro: "JSON inválido." }, { status: 400 });
+      return NextResponse.json(
+        { erro: "JSON inválido." },
+        { status: 400 }
+      );
     }
 
-    if (!corpo || typeof corpo !== "object" || Array.isArray(corpo)) {
-      return NextResponse.json({ erro: "Dados da cotação inválidos." }, { status: 400 });
+    if (
+      !corpo ||
+      typeof corpo !== "object" ||
+      Array.isArray(corpo)
+    ) {
+      return NextResponse.json(
+        { erro: "Dados da cotação inválidos." },
+        { status: 400 }
+      );
     }
 
     const entrada = corpo as Record<string, unknown>;
-    const cepDestino = typeof entrada.cepDestino === "string"
-      ? entrada.cepDestino.replace(/\D/g, "")
-      : "";
+
+    /* =====================================================
+       2. VALIDAR CEP
+       ===================================================== */
+
+    const cepDestino =
+      typeof entrada.cepDestino === "string"
+        ? entrada.cepDestino.replace(/\D/g, "")
+        : "";
 
     if (!/^\d{8}$/.test(cepDestino)) {
-      return NextResponse.json({ erro: "Informe um CEP válido." }, { status: 400 });
+      return NextResponse.json(
+        { erro: "Informe um CEP válido." },
+        { status: 400 }
+      );
     }
 
-    if (!Array.isArray(entrada.itens) || entrada.itens.length === 0 || entrada.itens.length > 30) {
-      return NextResponse.json({ erro: "A sacola está vazia ou inválida." }, { status: 400 });
+    /* =====================================================
+       3. VALIDAR ITENS DA SACOLA
+       ===================================================== */
+
+    if (
+      !Array.isArray(entrada.itens) ||
+      entrada.itens.length === 0 ||
+      entrada.itens.length > 30
+    ) {
+      return NextResponse.json(
+        { erro: "A sacola está vazia ou inválida." },
+        { status: 400 }
+      );
     }
 
     const quantidades = new Map<number, number>();
+
     for (const item of entrada.itens) {
-      if (!item || typeof item !== "object" || Array.isArray(item)) {
-        return NextResponse.json({ erro: "Item inválido na sacola." }, { status: 400 });
+      if (
+        !item ||
+        typeof item !== "object" ||
+        Array.isArray(item)
+      ) {
+        return NextResponse.json(
+          { erro: "Item inválido na sacola." },
+          { status: 400 }
+        );
       }
-      const { variantId, quantity } = item as Record<string, unknown>;
-      if (!inteiroPositivo(variantId) || !inteiroPositivo(quantity) || quantity > 100) {
-        return NextResponse.json({ erro: "Variante ou quantidade inválida." }, { status: 400 });
+
+      const { variantId, quantity } =
+        item as Record<string, unknown>;
+
+      if (
+        !inteiroPositivo(variantId) ||
+        !inteiroPositivo(quantity) ||
+        quantity > 100
+      ) {
+        return NextResponse.json(
+          { erro: "Variante ou quantidade inválida." },
+          { status: 400 }
+        );
       }
-      const total = (quantidades.get(variantId) ?? 0) + quantity;
+
+      const total =
+        (quantidades.get(variantId) ?? 0) + quantity;
+
       if (total > 100) {
-        return NextResponse.json({ erro: "Quantidade inválida para cotação." }, { status: 400 });
+        return NextResponse.json(
+          { erro: "Quantidade inválida para cotação." },
+          { status: 400 }
+        );
       }
+
       quantidades.set(variantId, total);
     }
 
-    const itens: ItemEntrada[] = Array.from(quantidades, ([variantId, quantity]) => ({ variantId, quantity }));
+    const itens: ItemEntrada[] = Array.from(
+      quantidades,
+      ([variantId, quantity]) => ({
+        variantId,
+        quantity,
+      })
+    );
+
+    /* =====================================================
+       4. CONSULTAR VARIANTES NO BANCO
+       ===================================================== */
+
     const variantes = await prisma.varianteProduto.findMany({
       where: {
-        id: { in: itens.map((item) => item.variantId) },
+        id: {
+          in: itens.map((item) => item.variantId),
+        },
         ativa: true,
-        produto: { ativo: true, categoria: { ativa: true } },
+        produto: {
+          ativo: true,
+          categoria: {
+            ativa: true,
+          },
+        },
       },
       select: {
         id: true,
@@ -93,88 +187,161 @@ export async function POST(request: NextRequest) {
             pesoGramas: true,
             preco: true,
             precoPromocional: true,
-            categoria: { select: { slug: true } },
+            categoria: {
+              select: {
+                slug: true,
+              },
+            },
           },
         },
       },
     });
 
     if (variantes.length !== itens.length) {
-      return NextResponse.json({ erro: "Um ou mais produtos não estão disponíveis." }, { status: 400 });
+      return NextResponse.json(
+        { erro: "Um ou mais produtos não estão disponíveis." },
+        { status: 400 }
+      );
     }
 
-    const porId = new Map(variantes.map((variante) => [variante.id, variante]));
-    const unidades: Unidade[] = [];
+    const porId = new Map(
+      variantes.map((variante) => [
+        variante.id,
+        variante,
+      ])
+    );
+
+    /* =====================================================
+       5. VALIDAR ESTOQUE, PESO E PREÇO
+       ===================================================== */
+
+    const unidades: UnidadeEmbalagem[] = [];
 
     for (const item of itens) {
       const variante = porId.get(item.variantId);
+
       if (!variante) {
-        return NextResponse.json({ erro: "Variante não encontrada." }, { status: 400 });
+        return NextResponse.json(
+          { erro: "Variante não encontrada." },
+          { status: 400 }
+        );
       }
+
       if (item.quantity > variante.quantidade) {
-        return NextResponse.json({ erro: `Estoque insuficiente para ${variante.produto.nome}.` }, { status: 400 });
+        return NextResponse.json(
+          {
+            erro: `Estoque insuficiente para ${variante.produto.nome}.`,
+          },
+          { status: 400 }
+        );
       }
+
       const peso = variante.produto.pesoGramas;
-      if (peso === null || !Number.isSafeInteger(peso) || peso <= 0) {
-        return NextResponse.json({ erro: `O produto ${variante.produto.nome} ainda não possui peso cadastrado.` }, { status: 422 });
-      }
-      const valor = Number(variante.produto.precoPromocional ?? variante.produto.preco);
-      if (!Number.isFinite(valor) || valor <= 0) {
-        return NextResponse.json({ erro: "Preço de produto inválido." }, { status: 422 });
-      }
-      const categoria = variante.produto.categoria.slug.toLowerCase().trim();
-      if (capacidadePorCategoria(categoria) === null) {
-        return NextResponse.json({ erro: `A embalagem do produto ${variante.produto.nome} ainda precisa ser configurada.` }, { status: 422 });
-      }
-      for (let i = 0; i < item.quantity; i++) unidades.push({ pesoGramas: peso, valor, categoria });
-    }
 
-    // Não misturamos categorias na mesma embalagem. Para camisetas,
-    // agrupamos pares; para as demais categorias, uma unidade por caixa.
-    const caixas: Caixa[] = [];
-    for (const unidade of unidades) {
-      const capacidade = capacidadePorCategoria(unidade.categoria)!;
-      let caixa = caixas.find(
-        (atual) => atual.categoria === unidade.categoria && atual.unidades.length < atual.capacidade
+      if (
+        peso === null ||
+        !Number.isSafeInteger(peso) ||
+        peso <= 0
+      ) {
+        return NextResponse.json(
+          {
+            erro: `O produto ${variante.produto.nome} ainda não possui peso cadastrado.`,
+          },
+          { status: 422 }
+        );
+      }
+
+      const valor = Number(
+        variante.produto.precoPromocional ??
+        variante.produto.preco
       );
-      if (!caixa) {
-        caixa = { unidades: [], capacidade, categoria: unidade.categoria };
-        caixas.push(caixa);
+
+      if (!Number.isFinite(valor) || valor <= 0) {
+        return NextResponse.json(
+          { erro: "Preço de produto inválido." },
+          { status: 422 }
+        );
       }
-      caixa.unidades.push(unidade);
-      if (caixas.length > MAX_EMBALAGENS) {
-        return NextResponse.json({ erro: "O pedido excede o limite de embalagens para cotação automática." }, { status: 422 });
+
+      const categoria =
+        variante.produto.categoria.slug
+          .toLowerCase()
+          .trim();
+
+      if (capacidadePorCategoria(categoria) === null) {
+        return NextResponse.json(
+          {
+            erro: `A embalagem do produto ${variante.produto.nome} ainda precisa ser configurada.`,
+          },
+          { status: 422 }
+        );
+      }
+
+      // Cada peça é representada por uma unidade física.
+      for (let i = 0; i < item.quantity; i++) {
+        unidades.push({
+          pesoGramas: peso,
+          valor,
+          categoria,
+        });
       }
     }
 
-    // O Melhor Envio recebe um volume por caixa. O serviço pode não oferecer
-    // modalidades para remessas multivolume; nesse caso, não inventamos frete.
-    const volumes = caixas.map((caixa) => ({
-      width: EMBALAGEM.width,
-      height: EMBALAGEM.height,
-      length: EMBALAGEM.length,
-      weight: (caixa.unidades.reduce((soma, unidade) => soma + unidade.pesoGramas, 0) + EMBALAGEM.pesoGramas) / 1000,
-    }));
+    /* =====================================================
+       6. MONTAR EMBALAGENS
+       =====================================================
+       Reutiliza o serviço compartilhado.
+       ===================================================== */
 
-    const valorSegurado = Math.round(
-      unidades.reduce((soma, unidade) => soma + unidade.valor, 0) * 100
-    ) / 100;
+    let resultadoEmbalagem;
 
-    const opcoes = await cotarFreteMelhorEnvio({ cepDestino, valorSegurado, volumes });
+    try {
+      resultadoEmbalagem = montarVolumesFrete(unidades);
+    } catch (error) {
+      if (error instanceof EmbalagemFreteError) {
+        return NextResponse.json(
+          { erro: error.message },
+          { status: 422 }
+        );
+      }
 
-    // Apenas informações públicas para o checkout. A separação detalhada das
-    // caixas será integrada à área administrativa quando os pedidos forem criados.
+      throw error;
+    }
+
+    /* =====================================================
+       7. CONSULTAR MELHOR ENVIO
+       ===================================================== */
+
+    const opcoes = await cotarFreteMelhorEnvio({
+      cepDestino,
+      volumes: resultadoEmbalagem.volumes,
+      valorSegurado: resultadoEmbalagem.valorSegurado,
+    });
+
+    /* =====================================================
+       8. RETORNAR COTAÇÃO
+       =====================================================
+       Preserva o contrato atual da API:
+       { opcoes, embalagem }
+       ===================================================== */
+
     return NextResponse.json(
-      { opcoes, embalagem: {
-        comprimentoCm: EMBALAGEM.length,
-        larguraCm: EMBALAGEM.width,
-        alturaCm: EMBALAGEM.height,
-        pesoTotalKg: volumes.reduce((soma, volume) => soma + volume.weight, 0),
-      } },
-      { headers: { "Cache-Control": "no-store" } }
+      {
+        opcoes,
+        embalagem: resultadoEmbalagem.embalagem,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
     );
   } catch (error) {
     console.error("[API FRETE]", error);
-    return NextResponse.json({ erro: "Não foi possível calcular o frete agora." }, { status: 500 });
+
+    return NextResponse.json(
+      { erro: "Não foi possível calcular o frete agora." },
+      { status: 500 }
+    );
   }
 }
