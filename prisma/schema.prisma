@@ -37,25 +37,25 @@ model Categoria {
 }
 
 model Produto {
-  id               Int               @id @default(autoincrement())
-  nome             String            @db.VarChar(150)
-  slug             String            @unique @db.VarChar(180)
-  descricao        String?           @db.Text
-  preco            Decimal           @db.Decimal(10, 2)
-  precoPromocional Decimal?          @db.Decimal(10, 2)
+  id               Int      @id @default(autoincrement())
+  nome             String   @db.VarChar(150)
+  slug             String   @unique @db.VarChar(180)
+  descricao        String?  @db.Text
+  preco            Decimal  @db.Decimal(10, 2)
+  precoPromocional Decimal? @db.Decimal(10, 2)
   categoriaId      Int
-  ativo            Boolean           @default(false)
-  destaque         Boolean           @default(false)
+  ativo            Boolean  @default(false)
+  destaque         Boolean  @default(false)
 
   // Peso individual do produto em gramas.
   // Opcional para preservar os produtos existentes.
-  
-  pesoGramas       Int?
-  criadoEm         DateTime          @default(now())
-  atualizadoEm     DateTime          @updatedAt
-  imagens          ImagemProduto[]
-  categoria        Categoria         @relation(fields: [categoriaId], references: [id])
-  variantes        VarianteProduto[]
+
+  pesoGramas   Int?
+  criadoEm     DateTime          @default(now())
+  atualizadoEm DateTime          @updatedAt
+  imagens      ImagemProduto[]
+  categoria    Categoria         @relation(fields: [categoriaId], references: [id])
+  variantes    VarianteProduto[]
 
   @@index([categoriaId])
   @@map("produtos")
@@ -149,21 +149,35 @@ model ItemCarrinho {
 
 /// Representa uma compra realizada na Pádua Culture.
 model Pedido {
-  id                   Int                    @id @default(autoincrement())
-  usuarioId            Int
-  status               StatusPedido           @default(AGUARDANDO_PAGAMENTO)
-  subtotal             Decimal                @db.Decimal(10, 2)
-  valorFrete           Decimal                @default(0.00) @db.Decimal(10, 2)
-  valorDesconto        Decimal                @default(0.00) @db.Decimal(10, 2)
-  valorTotal           Decimal                @db.Decimal(10, 2)
-  criadoEm             DateTime               @default(now())
-  atualizadoEm         DateTime               @updatedAt
-  enderecoEntrega      EnderecoEntregaPedido?
-  entrega              Entrega?
-  itens                ItemPedido[]
+  id              Int                    @id @default(autoincrement())
+  usuarioId       Int
+  status          StatusPedido           @default(AGUARDANDO_PAGAMENTO)
+  subtotal        Decimal                @db.Decimal(10, 2)
+  valorFrete      Decimal                @default(0.00) @db.Decimal(10, 2)
+  valorDesconto   Decimal                @default(0.00) @db.Decimal(10, 2)
+  valorTotal      Decimal                @db.Decimal(10, 2)
+  criadoEm        DateTime               @default(now())
+  atualizadoEm    DateTime               @updatedAt
+  // Endereço de entrega registrado na compra.
+  enderecoEntrega EnderecoEntregaPedido?
+
+  // Informações de transporte do pedido.
+  entrega Entrega?
+
+  // Produtos comprados.
+  itens ItemPedido[]
+
+  // Movimentações de estoque relacionadas ao pedido.
   movimentacoesEstoque MovimentacaoEstoque[]
-  pagamentos           Pagamento[]
-  usuario              Usuario                @relation(fields: [usuarioId], references: [id])
+
+  // Pagamentos realizados ou tentados.
+  pagamentos Pagamento[]
+
+  // Histórico de acontecimentos do pedido.
+  historico HistoricoPedido[]
+
+  // Cliente responsável pelo pedido.
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
 
   @@index([usuarioId])
   @@index([status])
@@ -244,19 +258,28 @@ model TransacaoPagamento {
 /// Informações logísticas de um pedido da Pádua Culture.
 /// Cada pedido poderá possuir uma entrega.
 model Entrega {
-  id                 Int           @id @default(autoincrement())
-  pedidoId           Int           @unique
-  transportadora     String?       @db.VarChar(100)
-  modalidadeFrete    String?       @db.VarChar(100)
-  codigoRastreamento String?       @db.VarChar(150)
-  urlRastreamento    String?       @db.VarChar(1000)
-  status             StatusEntrega @default(PENDENTE)
-  previsaoEntrega    DateTime?
-  dataPostagem       DateTime?
-  dataEntrega        DateTime?
-  criadoEm           DateTime      @default(now())
-  atualizadoEm       DateTime      @updatedAt
-  pedido             Pedido        @relation(fields: [pedidoId], references: [id])
+  id                 Int     @id @default(autoincrement())
+  pedidoId           Int     @unique
+  transportadora     String? @db.VarChar(100)
+  modalidadeFrete    String? @db.VarChar(100)
+  // Código fornecido pela transportadora.
+  codigoRastreamento String? @db.VarChar(150)
+
+  // Endereço para acompanhar a entrega.
+  urlRastreamento String? @db.VarChar(1000)
+
+  // Identificador externo da etiqueta do Melhor Envio.
+  // Opcional para manter compatibilidade com entregas existentes.
+  melhorEnvioId String? @unique @db.VarChar(150)
+
+  // Situação atual da entrega.
+  status          StatusEntrega @default(PENDENTE)
+  previsaoEntrega DateTime?
+  dataPostagem    DateTime?
+  dataEntrega     DateTime?
+  criadoEm        DateTime      @default(now())
+  atualizadoEm    DateTime      @updatedAt
+  pedido          Pedido        @relation(fields: [pedidoId], references: [id])
 
   @@index([status])
   @@index([codigoRastreamento])
@@ -337,4 +360,44 @@ enum TipoMovimentacaoEstoque {
   RESERVA
   LIBERACAO_RESERVA
   AJUSTE
+}
+
+// ======================================================
+// HISTÓRICO DE PEDIDOS - PÁDUA CULTURE
+// ======================================================
+//
+// Registra acontecimentos relacionados a uma compra.
+// Cada pedido pode possuir vários registros de histórico.
+//
+// Exemplos:
+// - Pedido criado
+// - Pagamento confirmado
+// - Pedido em preparação
+// - Pedido enviado
+// - Pedido entregue
+// ======================================================
+
+model HistoricoPedido {
+  // Identificador único do acontecimento.
+  id Int @id @default(autoincrement())
+
+  // Identificador do pedido relacionado.
+  pedidoId Int
+
+  // Situação registrada no momento do acontecimento.
+  status String @db.VarChar(50)
+
+  // Descrição apresentada no histórico.
+  descricao String @db.VarChar(255)
+
+  // Data e hora do registro.
+  criadoEm DateTime @default(now())
+
+  // Relacionamento com a tabela de pedidos.
+  pedido Pedido @relation(fields: [pedidoId], references: [id])
+
+  // Índice para buscar rapidamente o histórico de um pedido.
+  @@index([pedidoId, criadoEm])
+  // Nome físico da tabela no MySQL.
+  @@map("historico_pedidos")
 }
