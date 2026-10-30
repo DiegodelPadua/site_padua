@@ -854,44 +854,89 @@ export default function Checkout() {
               </p>
             )}
 
-            {!carregandoEnderecos &&
-              enderecos.length > 0 && (
-                <div className="checkoutSavedAddresses">
-                  <p>SEUS ENDEREÇOS CADASTRADOS</p>
 
-                  {enderecos.map((endereco) => (
+          {/* =====================================================
+              ENDEREÇOS CADASTRADOS — PÁDUA CULTURE
+              ===================================================== */}
+
+          {!carregandoEnderecos && enderecos.length > 0 && (
+            <div className="checkoutSavedAddresses">
+              <div className="checkoutAddressHeading">
+                <h3>SEUS ENDEREÇOS CADASTRADOS</h3>
+                <span>SELECIONE ONDE DESEJA RECEBER</span>
+              </div>
+
+              <div className="checkoutAddressList">
+                {enderecos.map((endereco) => {
+                  const selecionado =
+                    enderecoSelecionadoId === endereco.id;
+
+                  return (
                     <button
                       key={endereco.id}
                       type="button"
-                      onClick={() =>
-                        preencherEndereco(endereco)
-                      }
-                      aria-pressed={
-                        enderecoSelecionadoId ===
-                        endereco.id
-                      }
+                      className={`checkoutAddressCard ${
+                        selecionado ? "isSelected" : ""
+                      }`}
+                      onClick={() => preencherEndereco(endereco)}
+                      aria-pressed={selecionado}
                     >
-                      {endereco.apelido ||
-                        "ENDEREÇO DE ENTREGA"}
+                      {/* Indicador visual de seleção */}
+                      <span
+                        className="checkoutAddressRadio"
+                        aria-hidden="true"
+                      >
+                        <span />
+                      </span>
 
-                      {endereco.principal
-                        ? " — PRINCIPAL"
-                        : ""}
+                      {/* Dados do endereço */}
+                      <span className="checkoutAddressContent">
+                        <span className="checkoutAddressTop">
+                          <span className="checkoutAddressName">
+                            {endereco.apelido || "ENDEREÇO DE ENTREGA"}
+                          </span>
 
-                      {" · "}
-                      {endereco.logradouro},{" "}
-                      {endereco.numero}
-                      {" — "}
-                      {endereco.cidade}/
-                      {endereco.estado}
+                          {endereco.principal && (
+                            <span className="checkoutAddressBadge">
+                              PRINCIPAL
+                            </span>
+                          )}
+                        </span>
+
+                        <strong className="checkoutAddressStreet">
+                          {endereco.logradouro}, {endereco.numero}
+                        </strong>
+
+                        <span className="checkoutAddressDetails">
+                          {endereco.bairro} · {endereco.cidade}/
+                          {endereco.estado}
+                        </span>
+
+                        <span className="checkoutAddressCep">
+                          CEP {endereco.cep}
+                        </span>
+                      </span>
+
+                      <span className="checkoutAddressStatus">
+                        {selecionado ? "SELECIONADO" : "SELECIONAR"}
+                      </span>
                     </button>
-                  ))}
+                  );
+                })}
+             
                 </div>
-              )}
+              </div>
+            )}
+
+            {/* =====================================================
+                FORMULÁRIO DE ENDEREÇO
+                Mantém os campos e funcionalidades existentes.
+                ===================================================== */}
 
             <div className="checkoutFields">
               <label className="checkoutField">
                 <span>NOME</span>
+
                 <input
                   type="text"
                   name="nome"

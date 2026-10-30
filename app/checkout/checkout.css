@@ -400,8 +400,8 @@
   cursor: pointer;
 
   transition:
-    background 0.25s ease,
-    color 0.25s ease;
+  background 0.25s ease,
+  color 0.25s ease;
 }
 
 
@@ -527,4 +527,301 @@
     gap: 8px;
   }
 
+}
+
+
+/* =========================================================
+   PÁDUA CULTURE — ENDEREÇOS CADASTRADOS
+   =========================================================
+   Cartões selecionáveis no checkout.
+
+   Mantém a identidade visual da marca:
+   - Fundo bege
+   - Tipografia minimalista
+   - Bordas discretas
+   - Destaque para endereço selecionado
+   ========================================================= */
+
+.checkoutSavedAddresses {
+  margin-top: 30px;
+  width: 100%;
+}
+
+/* Cabeçalho da lista de endereços */
+
+.checkoutAddressHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+
+  margin-bottom: 18px;
+}
+
+.checkoutAddressHeading h3 {
+  margin: 0;
+
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.checkoutAddressHeading > span {
+  color: #777;
+
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+}
+
+/* Lista vertical de cartões */
+
+.checkoutAddressList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Cartão individual */
+
+.checkoutAddressCard {
+  width: 100%;
+  min-width: 0;
+  min-height: 118px;
+
+  padding: 22px 20px;
+
+  display: flex;
+  align-items: center;
+  gap: 18px;
+
+  background: transparent;
+  color: #111;
+
+  border: 1px solid #c8c5bc;
+  border-radius: 4px;
+
+  text-align: left;
+  font-family: inherit;
+
+  cursor: pointer;
+
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* Efeito ao passar o mouse */
+
+.checkoutAddressCard:hover {
+  background: #eae7df;
+  border-color: #777;
+}
+
+/* Cartão selecionado */
+
+.checkoutAddressCard.isSelected {
+  background: #e9e5da;
+  border-color: #111;
+
+  box-shadow: inset 3px 0 0 #111;
+}
+
+/* Acessibilidade ao navegar com teclado */
+
+.checkoutAddressCard:focus-visible {
+  outline: 2px solid #111;
+  outline-offset: 3px;
+}
+
+/* =========================================================
+   INDICADOR DE SELEÇÃO
+   ========================================================= */
+
+.checkoutAddressRadio {
+  width: 20px;
+  height: 20px;
+
+  flex: 0 0 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1.5px solid #777;
+  border-radius: 50%;
+}
+
+.checkoutAddressRadio > span {
+  width: 10px;
+  height: 10px;
+
+  display: block;
+
+  background: transparent;
+  border-radius: 50%;
+}
+
+.checkoutAddressCard.isSelected .checkoutAddressRadio {
+  border-color: #111;
+}
+
+.checkoutAddressCard.isSelected .checkoutAddressRadio > span {
+  background: #111;
+}
+
+/* =========================================================
+   INFORMAÇÕES DO ENDEREÇO
+   ========================================================= */
+
+.checkoutAddressContent {
+  min-width: 0;
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+
+  gap: 6px;
+}
+
+.checkoutAddressTop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.checkoutAddressName {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.checkoutAddressBadge {
+  padding: 5px 8px;
+
+  background: #d8d0bf;
+  color: #111;
+
+  border-radius: 2px;
+
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+}
+
+.checkoutAddressStreet {
+  max-width: 100%;
+
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+
+  overflow-wrap: anywhere;
+}
+
+.checkoutAddressDetails {
+  color: #555;
+
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.checkoutAddressCep {
+  color: #777;
+
+  font-size: 10px;
+  letter-spacing: 0.4px;
+}
+
+/* Texto à direita */
+
+.checkoutAddressStatus {
+  flex-shrink: 0;
+
+  color: #777;
+
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.checkoutAddressCard.isSelected .checkoutAddressStatus {
+  color: #111;
+}
+
+/* =========================================================
+   RESPONSIVIDADE — TABLET
+   ========================================================= */
+
+@media (max-width: 900px) {
+  .checkoutAddressCard {
+    padding: 20px 16px;
+    gap: 14px;
+  }
+
+  .checkoutAddressStreet {
+    font-size: 14px;
+  }
+}
+
+/* =========================================================
+   RESPONSIVIDADE — CELULAR
+   ========================================================= */
+
+@media (max-width: 600px) {
+  .checkoutAddressHeading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .checkoutAddressHeading h3 {
+    font-size: 10px;
+  }
+
+  .checkoutAddressHeading > span {
+    font-size: 8px;
+  }
+
+  .checkoutAddressCard {
+    min-height: 110px;
+
+    padding: 18px 14px;
+
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .checkoutAddressRadio {
+    margin-top: 4px;
+  }
+
+  .checkoutAddressContent {
+    gap: 5px;
+  }
+
+  .checkoutAddressName {
+    font-size: 9px;
+  }
+
+  .checkoutAddressStreet {
+    font-size: 13px;
+  }
+
+  .checkoutAddressDetails {
+    font-size: 11px;
+  }
+
+  .checkoutAddressCep {
+    font-size: 9px;
+  }
+
+  .checkoutAddressStatus {
+    display: none;
+  }
 }
