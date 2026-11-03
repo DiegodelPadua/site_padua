@@ -4,38 +4,39 @@
    =========================================================
    Responsável pelas regras de negócio dos pedidos.
 
-   Nesta etapa:
+   Funcionalidades:
    - Validar o endereço selecionado.
-   - Validar os produtos e suas quantidades.
-   - Validar a opção de frete selecionada.
-   - Preparar os dados para o Repository.
+   - Validar produtos e quantidades.
+   - Conferir disponibilidade de estoque.
+   - Validar a modalidade de frete.
+   - Calcular os valores oficiais do pedido.
+   - Encaminhar os dados para o Repository.
 
    IMPORTANTE:
-   Valores de produtos e frete enviados pelo navegador
-   nunca serão considerados preços oficiais.
+   Os valores enviados pelo navegador nunca são
+   considerados preços oficiais.
    ========================================================= */
 
-/* =========================================================
-   TIPOS DE ENTRADA
-   ========================================================= */
 import {
   montarVolumesFrete,
   EmbalagemFreteError,
   type UnidadeEmbalagem,
 } from "./embalagemFreteService";
 
-import {
-  cotarFreteMelhorEnvio,
-} from "./melhorEnvioService";
-
-
+import { cotarFreteMelhorEnvio } from "./melhorEnvioService";
 
 import { Prisma } from "@prisma/client";
 
 import {
   buscarEnderecoDoCliente,
   buscarVariantesDoPedido,
+  buscarPedidoPorChaveIdempotencia,
+  registrarPedido,
 } from "../repositories/pedidoRepository";
+
+/* =========================================================
+   TIPOS DE ENTRADA
+   ========================================================= */
 
 export type ItemNovoPedido = {
   variantId: number;
@@ -46,6 +47,19 @@ export type DadosNovoPedido = {
   enderecoId: number;
   freteId: number;
   itens: ItemNovoPedido[];
+};
+
+/* =========================================================
+   DADOS DE FINALIZAÇÃO DO CHECKOUT
+   =========================================================
+   A chave identifica uma tentativa de compra.
+
+   Ela deve permanecer igual quando o cliente
+   repetir a mesma tentativa de checkout.
+   ========================================================= */
+
+export type DadosCheckoutPedido = DadosNovoPedido & {
+  chaveIdempotencia: string;
 };
 
 /* =========================================================
@@ -75,6 +89,31 @@ function inteiroPositivo(valor: unknown): valor is number {
 }
 
 /* =========================================================
+   VALIDAR CHAVE DE IDEMPOTÊNCIA
+   =========================================================
+   Aceita somente UUIDs no formato convencional.
+
+   A chave não pode ser criada novamente pelo servidor
+   a cada repetição da mesma tentativa de checkout.
+   ========================================================= */
+
+export function validarChaveIdempotencia(
+  valor: unknown
+): string {
+  if (
+    typeof valor !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(valor)
+  ) {
+    throw new PedidoServiceError(
+      "Chave de idempotência inválida.",
+      400
+    );
+  }
+
+  return valor.toLowerCase();
+}
+
+/* =========================================================
    VALIDAR DADOS DO NOVO PEDIDO
    ========================================================= */
 
@@ -94,7 +133,7 @@ export function validarDadosNovoPedido(
   const dados = entrada as Record<string, unknown>;
 
   /* =====================================================
-     VALIDAR ENDEREÇO
+     1. VALIDAR ENDEREÇO
      ===================================================== */
 
   if (!inteiroPositivo(dados.enderecoId)) {
@@ -104,10 +143,10 @@ export function validarDadosNovoPedido(
   }
 
   /* =====================================================
-     VALIDAR FRETE
+     2. VALIDAR FRETE
      =====================================================
-     O identificador da modalidade será posteriormente
-     conferido com uma cotação oficial no servidor.
+     O identificador será conferido novamente com
+     uma cotação oficial realizada no servidor.
      ===================================================== */
 
   if (!inteiroPositivo(dados.freteId)) {
@@ -117,7 +156,7 @@ export function validarDadosNovoPedido(
   }
 
   /* =====================================================
-     VALIDAR ITENS
+     3. VALIDAR ITENS
      ===================================================== */
 
   if (
@@ -130,6 +169,7 @@ export function validarDadosNovoPedido(
     );
   }
 
+  // Agrupa variantes repetidas na mesma compra.
   const itensAgrupados = new Map<number, number>();
 
   for (const item of dados.itens) {
@@ -174,7 +214,7 @@ export function validarDadosNovoPedido(
   }
 
   /* =====================================================
-     RETORNAR DADOS NORMALIZADOS
+     4. RETORNAR DADOS NORMALIZADOS
      ===================================================== */
 
   return {
@@ -190,13 +230,14 @@ export function validarDadosNovoPedido(
   };
 }
 
-
 /* =========================================================
    PREPARAR PEDIDO - PÁDUA CULTURE
    =========================================================
-   Valida os dados do checkout e consulta o banco.
+   Valida o checkout e consulta os dados oficiais
+   armazenados no banco.
 
-   Não cria pedido, pagamento ou movimentação de estoque.
+   Não cria pedidos, pagamentos ou movimentações
+   de estoque nesta etapa.
    ========================================================= */
 
 export async function prepararNovoPedido(
@@ -204,7 +245,7 @@ export async function prepararNovoPedido(
   entrada: unknown
 ) {
   /* =====================================================
-     1. VALIDAR OS DADOS RECEBIDOS
+     1. VALIDAR CLIENTE E DADOS RECEBIDOS
      ===================================================== */
 
   if (
@@ -250,6 +291,7 @@ export async function prepararNovoPedido(
     );
   }
 
+  // Facilita a localização de cada variante pelo ID.
   const variantesPorId = new Map(
     variantes.map((variante) => [
       variante.id,
@@ -260,8 +302,8 @@ export async function prepararNovoPedido(
   /* =====================================================
      4. VERIFICAR ESTOQUE E CALCULAR SUBTOTAL
      =====================================================
-     Prisma.Decimal evita cálculos monetários com
-     ponto flutuante do JavaScript.
+     Prisma.Decimal evita imprecisões nos cálculos
+     monetários.
      ===================================================== */
 
   let subtotal = new Prisma.Decimal(0);
@@ -276,6 +318,7 @@ export async function prepararNovoPedido(
       );
     }
 
+    // Confere o estoque disponível no momento da consulta.
     if (variante.quantidade < item.quantity) {
       throw new PedidoServiceError(
         `Estoque insuficiente para ${variante.produto.nome} (${variante.cor}, ${variante.tamanho}).`,
@@ -283,8 +326,10 @@ export async function prepararNovoPedido(
       );
     }
 
-    const preco = variante.produto.precoPromocional
-      ?? variante.produto.preco;
+    // Aplica o preço promocional quando estiver definido.
+    const preco =
+      variante.produto.precoPromocional ??
+      variante.produto.preco;
 
     if (preco.lessThan(0)) {
       throw new PedidoServiceError(
@@ -297,6 +342,7 @@ export async function prepararNovoPedido(
 
     subtotal = subtotal.plus(subtotalItem);
 
+    // Preserva os dados do produto para o pedido.
     return {
       varianteId: variante.id,
       nomeProduto: variante.produto.nome,
@@ -313,10 +359,7 @@ export async function prepararNovoPedido(
   /* =====================================================
      5. RETORNAR DADOS PREPARADOS
      =====================================================
-     O frete ainda não está validado nesta etapa.
-
-     Não utilizar este resultado para gerar cobranças
-     ou gravar pedidos até integrar a cotação oficial.
+     O frete ainda será validado na próxima função.
      ===================================================== */
 
   return {
@@ -328,16 +371,15 @@ export async function prepararNovoPedido(
   };
 }
 
-
 /* =========================================================
    VALIDAR FRETE DO PEDIDO - PÁDUA CULTURE
    =========================================================
    Responsabilidades:
-   - Consultar os produtos já validados pelo Service.
+   - Validar cliente, endereço e produtos.
    - Montar as embalagens.
-   - Solicitar uma nova cotação ao Melhor Envio.
-   - Conferir a modalidade selecionada pelo cliente.
-   - Retornar o valor oficial do frete.
+   - Consultar novamente o Melhor Envio.
+   - Conferir a modalidade escolhida.
+   - Calcular o valor total.
 
    Não cria pedidos, cobranças ou etiquetas.
    ========================================================= */
@@ -362,6 +404,7 @@ export async function prepararPedidoComFrete(
   const unidades: UnidadeEmbalagem[] = [];
 
   for (const item of pedido.itens) {
+    // Cada produto precisa possuir peso válido.
     if (
       item.pesoGramas === null ||
       !Number.isSafeInteger(item.pesoGramas) ||
@@ -373,6 +416,7 @@ export async function prepararPedidoComFrete(
       );
     }
 
+    // Adiciona uma unidade para cada peça comprada.
     for (let i = 0; i < item.quantidade; i++) {
       unidades.push({
         pesoGramas: item.pesoGramas,
@@ -408,7 +452,8 @@ export async function prepararPedidoComFrete(
      =====================================================
      O CEP vem do endereço cadastrado no banco.
 
-     O valor do frete nunca é recebido do navegador.
+     O preço do frete nunca é aceito diretamente
+     do navegador.
      ===================================================== */
 
   const opcoes = await cotarFreteMelhorEnvio({
@@ -434,8 +479,6 @@ export async function prepararPedidoComFrete(
 
   /* =====================================================
      6. CALCULAR VALOR TOTAL DO PEDIDO
-     =====================================================
-     Os valores monetários são tratados com Decimal.
      ===================================================== */
 
   const valorFrete = new Prisma.Decimal(
@@ -447,7 +490,8 @@ export async function prepararPedidoComFrete(
   /* =====================================================
      7. RETORNAR PEDIDO PREPARADO
      =====================================================
-     Ainda não existe gravação no banco.
+     Os dados estão prontos para o Repository,
+     mas ainda não foram gravados.
      ===================================================== */
 
   return {
@@ -461,4 +505,156 @@ export async function prepararPedidoComFrete(
     valorFrete,
     valorTotal,
   };
+} // CORREÇÃO: encerra prepararPedidoComFrete()
+
+/* =========================================================
+   CRIAR PEDIDO - PÁDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   1. Validar cliente, endereço e produtos.
+   2. Consultar novamente o Melhor Envio.
+   3. Calcular os valores oficiais.
+   4. Registrar o pedido no banco de dados.
+
+   IMPORTANTE:
+   - Não processa pagamentos.
+   - Não reserva nem desconta estoque.
+   - Não gera etiquetas de envio.
+   - Não impede pedidos duplicados.
+
+   Esta função não deve ser exposta publicamente
+   antes da implementação dessas proteções.
+   ========================================================= */
+
+
+
+/* =========================================================
+   CRIAR PEDIDO - PÁDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   1. Validar os dados do cliente e dos produtos.
+   2. Conferir o frete com o Melhor Envio.
+   3. Preparar a identificação do pedido.
+   4. Definir o prazo da reserva de estoque.
+   5. Enviar os dados ao Repository.
+
+   IMPORTANTE:
+   A idempotência definitiva e a liberação automática
+   do estoque serão implementadas nas próximas etapas.
+   ========================================================= */
+
+export async function criarNovoPedido(
+  usuarioId: number,
+  entrada: unknown
+) {
+  /* =====================================================
+     1. PREPARAR E VALIDAR O PEDIDO
+     ===================================================== */
+
+  const pedidoPreparado = await prepararPedidoComFrete(
+    usuarioId,
+    entrada
+  );
+
+  /* =====================================================
+     2. GERAR A IDENTIFICAÇÃO DA TENTATIVA
+     =====================================================
+     Por enquanto, geramos um UUID no servidor.
+
+     Esta implementação é temporária:
+     a idempotência real exigirá uma chave estável
+     para a mesma tentativa de checkout.
+     ===================================================== */
+
+  const chaveIdempotencia = crypto.randomUUID();
+
+  /* =====================================================
+     3. DEFINIR A EXPIRAÇÃO DA RESERVA
+     =====================================================
+     A reserva terá um prazo inicial de 15 minutos.
+
+     Isso apenas registra a data no banco.
+     Não existe liberação automática nesta etapa.
+     ===================================================== */
+
+  const reservaExpiraEm = new Date(
+    Date.now() + 15 * 60 * 1000
+  );
+
+  /* =====================================================
+     4. REGISTRAR O PEDIDO NO BANCO
+     =====================================================
+     O Repository será responsável por:
+     - Criar o pedido.
+     - Reservar o estoque.
+     - Registrar os itens.
+     - Salvar o endereço.
+     - Registrar a entrega.
+     - Criar o histórico.
+
+     Todas essas operações devem ocorrer dentro
+     da mesma transação Prisma.
+     ===================================================== */
+
+  const pedidoRegistrado = await registrarPedido({
+    // Identificação do cliente.
+    usuarioId: pedidoPreparado.usuarioId,
+
+    // Identificação da tentativa de checkout.
+    chaveIdempotencia,
+
+    // Prazo de validade da reserva.
+    reservaExpiraEm,
+
+    // Valores calculados pelo servidor.
+    subtotal: pedidoPreparado.subtotal,
+    valorFrete: pedidoPreparado.valorFrete,
+    valorTotal: pedidoPreparado.valorTotal,
+
+    /* =================================================
+       ENDEREÇO DE ENTREGA
+       ================================================= */
+
+    endereco: {
+      destinatario: pedidoPreparado.endereco.destinatario,
+      cep: pedidoPreparado.endereco.cep,
+      logradouro: pedidoPreparado.endereco.logradouro,
+      numero: pedidoPreparado.endereco.numero,
+      complemento: pedidoPreparado.endereco.complemento,
+      bairro: pedidoPreparado.endereco.bairro,
+      cidade: pedidoPreparado.endereco.cidade,
+      estado: pedidoPreparado.endereco.estado,
+    },
+
+    /* =================================================
+       INFORMAÇÕES DO FRETE
+       ================================================= */
+
+    frete: {
+      nome: pedidoPreparado.frete.nome,
+      transportadora: pedidoPreparado.frete.transportadora,
+    },
+
+    /* =================================================
+       PRODUTOS DO PEDIDO
+       ================================================= */
+
+    itens: pedidoPreparado.itens.map((item) => ({
+      varianteId: item.varianteId,
+      nomeProduto: item.nomeProduto,
+      tamanho: item.tamanho,
+      cor: item.cor,
+      quantidade: item.quantidade,
+      precoUnitario: item.precoUnitario,
+      subtotal: item.subtotal,
+    })),
+  });
+
+  /* =====================================================
+     5. RETORNAR O PEDIDO REGISTRADO
+     ===================================================== */
+
+  return pedidoRegistrado;
 }
+
+

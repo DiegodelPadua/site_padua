@@ -151,6 +151,11 @@ model ItemCarrinho {
 model Pedido {
   id              Int                    @id @default(autoincrement())
   usuarioId       Int
+    // Identifica uma tentativa de compra sem duplicá-la.
+  chaveIdempotencia String? @unique @db.VarChar(100)
+
+  // Define até quando o estoque ficará reservado.
+  reservaExpiraEm DateTime?
   status          StatusPedido           @default(AGUARDANDO_PAGAMENTO)
   subtotal        Decimal                @db.Decimal(10, 2)
   valorFrete      Decimal                @default(0.00) @db.Decimal(10, 2)
@@ -228,6 +233,8 @@ model Pagamento {
   status               StatusPagamento      @default(PENDENTE)
   valor                Decimal              @db.Decimal(10, 2)
   identificadorExterno String?
+    // Identificador da operação de criação da order no Mercado Pago.
+  chaveIdempotencia String? @unique @db.VarChar(100)
   criadoEm             DateTime             @default(now())
   atualizadoEm         DateTime             @updatedAt
   pagoEm               DateTime?
