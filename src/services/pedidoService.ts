@@ -695,69 +695,129 @@ const pedidoPreparado = await prepararPedidoComFrete(
      da mesma transação Prisma.
      ===================================================== */
 
-  const pedidoRegistrado = await registrarPedido({
-    // Identificação do cliente.
-    usuarioId: pedidoPreparado.usuarioId,
+  // Tenta registrar o pedido e reservar o estoque.
+  // Se outra requisição já utilizou a mesma chave,
+  // o erro será tratado sem criar uma segunda compra.
+  try {
 
-    // Identificação da tentativa de checkout.
-    chaveIdempotencia,
+    const pedidoRegistrado = await registrarPedido({
+      // Identificação do cliente.
+      usuarioId: pedidoPreparado.usuarioId,
 
-    // Identifica os dados originais da compra.
-    // Será comparado nas tentativas repetidas.
-    hashCheckout,
+      // Identificação da tentativa de checkout.
+      chaveIdempotencia,
 
-    // Prazo de validade da reserva.
-    reservaExpiraEm,
+      // Identifica os dados originais da compra.
+      // Será comparado nas tentativas repetidas.
+      hashCheckout,
 
-    // Valores calculados pelo servidor.
-    subtotal: pedidoPreparado.subtotal,
-    valorFrete: pedidoPreparado.valorFrete,
-    valorTotal: pedidoPreparado.valorTotal,
+      // Prazo de validade da reserva.
+      reservaExpiraEm,
 
-    /* =================================================
-       ENDEREÇO DE ENTREGA
-       ================================================= */
+      // Valores calculados pelo servidor.
+      subtotal: pedidoPreparado.subtotal,
+      valorFrete: pedidoPreparado.valorFrete,
+      valorTotal: pedidoPreparado.valorTotal,
 
-    endereco: {
-      destinatario: pedidoPreparado.endereco.destinatario,
-      cep: pedidoPreparado.endereco.cep,
-      logradouro: pedidoPreparado.endereco.logradouro,
-      numero: pedidoPreparado.endereco.numero,
-      complemento: pedidoPreparado.endereco.complemento,
-      bairro: pedidoPreparado.endereco.bairro,
-      cidade: pedidoPreparado.endereco.cidade,
-      estado: pedidoPreparado.endereco.estado,
-    },
+      /* =================================================
+        ENDEREÇO DE ENTREGA
+        ================================================= */
 
-    /* =================================================
-       INFORMAÇÕES DO FRETE
-       ================================================= */
+      endereco: {
+        destinatario: pedidoPreparado.endereco.destinatario,
+        cep: pedidoPreparado.endereco.cep,
+        logradouro: pedidoPreparado.endereco.logradouro,
+        numero: pedidoPreparado.endereco.numero,
+        complemento: pedidoPreparado.endereco.complemento,
+        bairro: pedidoPreparado.endereco.bairro,
+        cidade: pedidoPreparado.endereco.cidade,
+        estado: pedidoPreparado.endereco.estado,
+      },
 
-    frete: {
-      nome: pedidoPreparado.frete.nome,
-      transportadora: pedidoPreparado.frete.transportadora,
-    },
+      /* =================================================
+        INFORMAÇÕES DO FRETE
+        ================================================= */
 
-    /* =================================================
-       PRODUTOS DO PEDIDO
-       ================================================= */
+      frete: {
+        nome: pedidoPreparado.frete.nome,
+        transportadora: pedidoPreparado.frete.transportadora,
+      },
 
-    itens: pedidoPreparado.itens.map((item) => ({
-      varianteId: item.varianteId,
-      nomeProduto: item.nomeProduto,
-      tamanho: item.tamanho,
-      cor: item.cor,
-      quantidade: item.quantidade,
-      precoUnitario: item.precoUnitario,
-      subtotal: item.subtotal,
-    })),
-  });
+      /* =================================================
+        PRODUTOS DO PEDIDO
+        ================================================= */
+
+      itens: pedidoPreparado.itens.map((item) => ({
+        varianteId: item.varianteId,
+        nomeProduto: item.nomeProduto,
+        tamanho: item.tamanho,
+        cor: item.cor,
+        quantidade: item.quantidade,
+        precoUnitario: item.precoUnitario,
+        subtotal: item.subtotal,
+      })),
+    });
 
   /* =====================================================
      5. RETORNAR O PEDIDO REGISTRADO
      ===================================================== */
 
+  // Primeira tentativa concluída: retorna o pedido criado.
   return pedidoRegistrado;
+
+} catch (erro: unknown) {
+  /*
+   * P2002: violação de restrição UNIQUE do Prisma.
+   *
+   * Pode ocorrer quando duas requisições tentam
+   * registrar a mesma chave simultaneamente.
+   */
+  if (
+    erro instanceof Prisma.PrismaClientKnownRequestError &&
+    erro.code === "P2002"
+  ) {
+    // Consulta novamente o pedido que venceu a concorrência.
+    const pedidoExistente =
+      await buscarPedidoPorChaveIdempotencia(chaveIdempotencia);
+
+    // Se não existir pedido com essa chave, o conflito
+    // pode ter ocorrido em outra restrição UNIQUE.
+    if (!pedidoExistente) {
+      throw erro;
+    }
+
+    // Impede acesso a pedidos de outro cliente.
+    if (pedidoExistente.usuarioId !== usuarioId) {
+      throw new PedidoServiceError(
+        "Chave de idempotência já utilizada.",
+        409
+      );
+    }
+
+    // A chave não pode representar duas compras diferentes.
+    if (
+      !pedidoExistente.hashCheckout ||
+      pedidoExistente.hashCheckout !== hashCheckout
+    ) {
+      throw new PedidoServiceError(
+        "Esta chave já foi utilizada com dados diferentes.",
+        409
+      );
+    }
+
+    // Retorna o pedido original sem reservar estoque novamente.
+    return {
+      id: pedidoExistente.id,
+      status: pedidoExistente.status,
+      valorTotal: pedidoExistente.valorTotal,
+      criadoEm: pedidoExistente.criadoEm,
+    };
+  }
+
+  // Erros de estoque, banco ou outros problemas
+  // não devem ser tratados como pedidos duplicados.
+  throw erro;
+}
 }
 
 

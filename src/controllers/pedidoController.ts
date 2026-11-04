@@ -12,6 +12,16 @@
    Route -> Controller -> Service -> Repository -> Prisma
    ========================================================= */
 
+
+// Serviço responsável pela criação do pedido.
+import {
+  criarNovoPedido,
+  PedidoServiceError,
+} from "../services/pedidoService";
+
+// Erro de estoque insuficiente durante a reserva.
+import { ReservaEstoqueError } from "../repositories/pedidoRepository";   
+
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "../../lib/prisma";
@@ -148,19 +158,45 @@ export async function criarPedidoController(
        Ainda não criamos pedidos nem movimentamos estoque.
        ===================================================== */
 
-    return NextResponse.json(
-      {
-        mensagem:
-          "Autenticação validada. A criação de pedidos ainda não está habilitada.",
-      },
-      {
-        status: 501,
-        headers: {
-          "Cache-Control": "no-store",
+      // Cria o pedido com os dados validados pelo Service.
+      // O Service calcula os preços, valida o frete e
+      // registra a reserva de estoque no MySQL.
+      const pedido = await criarNovoPedido(usuarioId, body);
+
+      return NextResponse.json(
+        {
+          mensagem: "Pedido registrado com sucesso.",
+          pedido: {
+            id: pedido.id,
+            status: pedido.status,
+            valorTotal: pedido.valorTotal.toString(),
+            criadoEm: pedido.criadoEm,
+          },
         },
-      }
-    );
+        {
+          status: 201,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+
   } catch (error) {
+    // Erros esperados das regras de negócio.
+    if (error instanceof PedidoServiceError) {
+      return NextResponse.json(
+        { erro: error.message },
+        { status: error.status }
+      );
+    }
+
+    // Falta de estoque identificada na transação.
+    if (error instanceof ReservaEstoqueError) {
+      return NextResponse.json(
+        { erro: error.message },
+        { status: 409 }
+      );
+    }
     console.error(
       "[PEDIDO CONTROLLER] Erro ao processar pedido:",
       error

@@ -14,6 +14,7 @@ import {
   StatusPedido,
   StatusEntrega,
   TipoMovimentacaoEstoque,
+  StatusPagamento,
 } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 
@@ -455,5 +456,196 @@ for (const item of dados.itens) {
        ===================================================== */
 
     return pedido;
+  });
+}
+/**
+ * Libera o estoque de um pedido cuja reserva expirou.
+ *
+ * Regras:
+ * - Somente pedidos AGUARDANDO_PAGAMENTO podem ser cancelados.
+ * - A reserva precisa estar vencida.
+ * - Pagamentos pendentes, processando ou aprovados bloqueiam
+ *   a liberação até que sua situação seja conciliada.
+ * - O cancelamento e a devolução ocorrem na mesma transação.
+ *
+ * Retorna true quando a reserva foi liberada.
+ * Retorna false quando não é seguro ou necessário liberá-la.
+ */
+export async function liberarReservaExpirada(
+  pedidoId: number
+): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const agora = new Date();
+
+    // Bloqueia logicamente o pedido por meio de uma atualização
+    // condicional. Apenas uma execução poderá mudar seu status.
+    const alteracao = await tx.pedido.updateMany({
+      where: {
+        id: pedidoId,
+        status: StatusPedido.AGUARDANDO_PAGAMENTO,
+        reservaExpiraEm: {
+          lte: agora,
+        },
+
+        // Não libera estoque enquanto houver uma cobrança
+        // que possa ser confirmada pelo provedor.
+        pagamentos: {
+          none: {
+            status: {
+              in: [
+                StatusPagamento.PENDENTE,
+                StatusPagamento.PROCESSANDO,
+                StatusPagamento.APROVADO,
+              ],
+            },
+          },
+        },
+      },
+      data: {
+        status: StatusPedido.CANCELADO,
+      },
+    });
+
+    // Se outra execução já alterou o pedido ou existe
+    // pagamento que exige conciliação, não faz nada.
+    if (alteracao.count !== 1) {
+      return false;
+    }
+
+    // Recupera as reservas efetivamente registradas.
+    const reservas = await tx.movimentacaoEstoque.findMany({
+      where: {
+        pedidoId,
+        tipo: TipoMovimentacaoEstoque.RESERVA,
+      },
+      select: {
+        varianteId: true,
+        quantidade: true,
+      },
+    });
+
+    // Devolve cada quantidade reservada ao estoque.
+    for (const reserva of reservas) {
+      const variante = await tx.varianteProduto.findUnique({
+        where: {
+          id: reserva.varianteId,
+        },
+        select: {
+          quantidade: true,
+        },
+      });
+
+      if (!variante) {
+        // Qualquer erro desfaz toda a transação,
+        // inclusive a mudança de status do pedido.
+        throw new Error(
+          `Variante ${reserva.varianteId} não encontrada.`
+        );
+      }
+
+      // Incremento atômico para preservar alterações concorrentes.
+      await tx.varianteProduto.update({
+        where: {
+          id: reserva.varianteId,
+        },
+        data: {
+          quantidade: {
+            increment: reserva.quantidade,
+          },
+        },
+      });
+
+      // Consulta o saldo após a devolução.
+      const varianteAtualizada =
+        await tx.varianteProduto.findUniqueOrThrow({
+          where: {
+            id: reserva.varianteId,
+          },
+          select: {
+            quantidade: true,
+          },
+        });
+
+      // Registra a devolução para auditoria do estoque.
+      await tx.movimentacaoEstoque.create({
+        data: {
+          pedidoId,
+          varianteId: reserva.varianteId,
+          tipo: TipoMovimentacaoEstoque.LIBERACAO_RESERVA,
+          quantidade: reserva.quantidade,
+          motivo: "Reserva expirada sem pagamento confirmado.",
+          saldoAnterior: varianteAtualizada.quantidade - reserva.quantidade,
+          saldoPosterior: varianteAtualizada.quantidade,
+        },
+      });
+    }
+
+    // Registra o cancelamento no histórico do pedido.
+    await tx.historicoPedido.create({
+      data: {
+        pedidoId,
+        status: StatusPedido.CANCELADO,
+        descricao: "Pedido cancelado por expiração da reserva de estoque.",
+      },
+    });
+
+    return true;
+  });
+}
+
+/* =========================================================
+   BUSCAR PEDIDOS COM RESERVA EXPIRADA
+   PÁDUA CULTURE
+
+   Identifica pedidos cujo prazo de reserva terminou.
+
+   Esta função apenas consulta o banco.
+   Não cancela pedidos nem movimenta estoque.
+   ========================================================= */
+
+export async function buscarPedidosComReservaExpirada(
+  limite: number = 50
+) {
+  // Impede consultas excessivamente grandes.
+  const quantidade = Math.min(
+    Math.max(Math.trunc(limite), 1),
+    100
+  );
+
+  // Consulta somente pedidos aguardando pagamento
+  // cujo prazo de reserva já terminou.
+  return prisma.pedido.findMany({
+    where: {
+      status: StatusPedido.AGUARDANDO_PAGAMENTO,
+
+      reservaExpiraEm: {
+        lte: new Date(),
+      },
+
+      // Não seleciona pedidos com cobranças que ainda
+      // podem ser aprovadas ou exigem conciliação.
+      pagamentos: {
+        none: {
+          status: {
+            in: [
+              StatusPagamento.PENDENTE,
+              StatusPagamento.PROCESSANDO,
+              StatusPagamento.APROVADO,
+            ],
+          },
+        },
+      },
+    },
+
+    select: {
+      id: true,
+      reservaExpiraEm: true,
+    },
+
+    orderBy: {
+      reservaExpiraEm: "asc",
+    },
+
+    take: quantidade,
   });
 }
