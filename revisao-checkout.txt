@@ -1,0 +1,1271 @@
+﻿
+
+========== src/services/pedidoService.ts ==========
+
+/* =========================================================
+   PEDIDO SERVICE - PÃDUA CULTURE
+   =========================================================
+   ResponsÃ¡vel pelas regras de negÃ³cio dos pedidos.
+
+   Funcionalidades:
+   - Validar o endereÃ§o selecionado.
+   - Validar produtos e quantidades.
+   - Conferir disponibilidade de estoque.
+   - Validar a modalidade de frete.
+   - Calcular os valores oficiais do pedido.
+   - Encaminhar os dados para o Repository.
+
+   IMPORTANTE:
+   Os valores enviados pelo navegador nunca sÃ£o
+   considerados preÃ§os oficiais.
+   ========================================================= */
+
+import {
+  montarVolumesFrete,
+  EmbalagemFreteError,
+  type UnidadeEmbalagem,
+} from "./embalagemFreteService";
+
+import { cotarFreteMelhorEnvio } from "./melhorEnvioService";
+
+import { Prisma } from "@prisma/client";
+
+import {
+  buscarEnderecoDoCliente,
+  buscarVariantesDoPedido,
+  buscarPedidoPorChaveIdempotencia,
+  registrarPedido,
+} from "../repositories/pedidoRepository";
+
+// FunÃ§Ã£o nativa do Node.js para gerar o SHA-256.
+import { createHash } from "node:crypto";
+
+
+
+/* =========================================================
+   TIPOS DE ENTRADA
+   ========================================================= */
+
+export type ItemNovoPedido = {
+  variantId: number;
+  quantity: number;
+};
+
+export type DadosNovoPedido = {
+  enderecoId: number;
+  freteId: number;
+  itens: ItemNovoPedido[];
+};
+
+/* =========================================================
+   DADOS DE FINALIZAÃ‡ÃƒO DO CHECKOUT
+   =========================================================
+   A chave identifica uma tentativa de compra.
+
+   Ela deve permanecer igual quando o cliente
+   repetir a mesma tentativa de checkout.
+   ========================================================= */
+
+export type DadosCheckoutPedido = DadosNovoPedido & {
+  chaveIdempotencia: string;
+};
+
+/* =========================================================
+   ERRO DE REGRA DE NEGÃ“CIO
+   ========================================================= */
+
+export class PedidoServiceError extends Error {
+  constructor(
+    mensagem: string,
+    public readonly status: number = 400
+  ) {
+    super(mensagem);
+    this.name = "PedidoServiceError";
+  }
+}
+
+/* =========================================================
+   VALIDAR INTEIRO POSITIVO
+   ========================================================= */
+
+function inteiroPositivo(valor: unknown): valor is number {
+  return (
+    typeof valor === "number" &&
+    Number.isSafeInteger(valor) &&
+    valor > 0
+  );
+}
+
+/* =========================================================
+   VALIDAR CHAVE DE IDEMPOTÃŠNCIA
+   =========================================================
+   Aceita somente UUIDs no formato convencional.
+
+   A chave nÃ£o pode ser criada novamente pelo servidor
+   a cada repetiÃ§Ã£o da mesma tentativa de checkout.
+   ========================================================= */
+
+export function validarChaveIdempotencia(
+  valor: unknown
+): string {
+  if (
+    typeof valor !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(valor)
+  ) {
+    throw new PedidoServiceError(
+      "Chave de idempotÃªncia invÃ¡lida.",
+      400
+    );
+  }
+
+  return valor.toLowerCase();
+}
+
+/* =========================================================
+   VALIDAR DADOS DO NOVO PEDIDO
+   ========================================================= */
+
+export function validarDadosNovoPedido(
+  entrada: unknown
+): DadosNovoPedido {
+  if (
+    !entrada ||
+    typeof entrada !== "object" ||
+    Array.isArray(entrada)
+  ) {
+    throw new PedidoServiceError(
+      "Dados do pedido invÃ¡lidos."
+    );
+  }
+
+  const dados = entrada as Record<string, unknown>;
+
+  /* =====================================================
+     1. VALIDAR ENDEREÃ‡O
+     ===================================================== */
+
+  if (!inteiroPositivo(dados.enderecoId)) {
+    throw new PedidoServiceError(
+      "Selecione um endereÃ§o de entrega vÃ¡lido."
+    );
+  }
+
+  /* =====================================================
+     2. VALIDAR FRETE
+     =====================================================
+     O identificador serÃ¡ conferido novamente com
+     uma cotaÃ§Ã£o oficial realizada no servidor.
+     ===================================================== */
+
+  if (!inteiroPositivo(dados.freteId)) {
+    throw new PedidoServiceError(
+      "Selecione uma modalidade de frete vÃ¡lida."
+    );
+  }
+
+  /* =====================================================
+     3. VALIDAR ITENS
+     ===================================================== */
+
+  if (
+    !Array.isArray(dados.itens) ||
+    dados.itens.length === 0 ||
+    dados.itens.length > 30
+  ) {
+    throw new PedidoServiceError(
+      "O pedido deve conter entre 1 e 30 itens."
+    );
+  }
+
+  // Agrupa variantes repetidas na mesma compra.
+  const itensAgrupados = new Map<number, number>();
+
+  for (const item of dados.itens) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      Array.isArray(item)
+    ) {
+      throw new PedidoServiceError(
+        "Um dos itens do pedido Ã© invÃ¡lido."
+      );
+    }
+
+    const atual = item as Record<string, unknown>;
+
+    if (
+      !inteiroPositivo(atual.variantId) ||
+      !inteiroPositivo(atual.quantity) ||
+      atual.quantity > 100
+    ) {
+      throw new PedidoServiceError(
+        "Produto ou quantidade invÃ¡lida."
+      );
+    }
+
+    const quantidadeAnterior =
+      itensAgrupados.get(atual.variantId) ?? 0;
+
+    const quantidadeTotal =
+      quantidadeAnterior + atual.quantity;
+
+    if (quantidadeTotal > 100) {
+      throw new PedidoServiceError(
+        "Quantidade mÃ¡xima excedida para um produto."
+      );
+    }
+
+    itensAgrupados.set(
+      atual.variantId,
+      quantidadeTotal
+    );
+  }
+
+  /* =====================================================
+     4. RETORNAR DADOS NORMALIZADOS
+     ===================================================== */
+
+  return {
+    enderecoId: dados.enderecoId,
+    freteId: dados.freteId,
+    itens: Array.from(
+      itensAgrupados,
+      ([variantId, quantity]) => ({
+        variantId,
+        quantity,
+      })
+    ),
+  };
+}
+
+/* =========================================================
+   PREPARAR PEDIDO - PÃDUA CULTURE
+   =========================================================
+   Valida o checkout e consulta os dados oficiais
+   armazenados no banco.
+
+   NÃ£o cria pedidos, pagamentos ou movimentaÃ§Ãµes
+   de estoque nesta etapa.
+   ========================================================= */
+
+export async function prepararNovoPedido(
+  usuarioId: number,
+  entrada: unknown
+) {
+  /* =====================================================
+     1. VALIDAR CLIENTE E DADOS RECEBIDOS
+     ===================================================== */
+
+  if (
+    !Number.isSafeInteger(usuarioId) ||
+    usuarioId <= 0
+  ) {
+    throw new PedidoServiceError(
+      "UsuÃ¡rio invÃ¡lido.",
+      401
+    );
+  }
+
+  const dados = validarDadosNovoPedido(entrada);
+
+  /* =====================================================
+     2. VERIFICAR SE O ENDEREÃ‡O PERTENCE AO CLIENTE
+     ===================================================== */
+
+  const endereco = await buscarEnderecoDoCliente(
+    usuarioId,
+    dados.enderecoId
+  );
+
+  if (!endereco) {
+    throw new PedidoServiceError(
+      "EndereÃ§o nÃ£o encontrado para este cliente.",
+      404
+    );
+  }
+
+  /* =====================================================
+     3. CONSULTAR PRODUTOS ATIVOS
+     ===================================================== */
+
+  const variantes = await buscarVariantesDoPedido(
+    dados.itens.map((item) => item.variantId)
+  );
+
+  if (variantes.length !== dados.itens.length) {
+    throw new PedidoServiceError(
+      "Um ou mais produtos nÃ£o estÃ£o disponÃ­veis.",
+      409
+    );
+  }
+
+  // Facilita a localizaÃ§Ã£o de cada variante pelo ID.
+  const variantesPorId = new Map(
+    variantes.map((variante) => [
+      variante.id,
+      variante,
+    ])
+  );
+
+  /* =====================================================
+     4. VERIFICAR ESTOQUE E CALCULAR SUBTOTAL
+     =====================================================
+     Prisma.Decimal evita imprecisÃµes nos cÃ¡lculos
+     monetÃ¡rios.
+     ===================================================== */
+
+  let subtotal = new Prisma.Decimal(0);
+
+  const itens = dados.itens.map((item) => {
+    const variante = variantesPorId.get(item.variantId);
+
+    if (!variante) {
+      throw new PedidoServiceError(
+        "Produto nÃ£o encontrado.",
+        409
+      );
+    }
+
+    // Confere o estoque disponÃ­vel no momento da consulta.
+    if (variante.quantidade < item.quantity) {
+      throw new PedidoServiceError(
+        `Estoque insuficiente para ${variante.produto.nome} (${variante.cor}, ${variante.tamanho}).`,
+        409
+      );
+    }
+
+    // Aplica o preÃ§o promocional quando estiver definido.
+    const preco =
+      variante.produto.precoPromocional ??
+      variante.produto.preco;
+
+    if (preco.lessThan(0)) {
+      throw new PedidoServiceError(
+        "PreÃ§o invÃ¡lido para um dos produtos.",
+        409
+      );
+    }
+
+    const subtotalItem = preco.mul(item.quantity);
+
+    subtotal = subtotal.plus(subtotalItem);
+
+    // Preserva os dados do produto para o pedido.
+    return {
+      varianteId: variante.id,
+      nomeProduto: variante.produto.nome,
+      tamanho: variante.tamanho,
+      cor: variante.cor,
+      quantidade: item.quantity,
+      precoUnitario: preco,
+      subtotal: subtotalItem,
+      pesoGramas: variante.produto.pesoGramas,
+      categoriaSlug: variante.produto.categoria.slug,
+    };
+  });
+
+  /* =====================================================
+     5. RETORNAR DADOS PREPARADOS
+     =====================================================
+     O frete ainda serÃ¡ validado na prÃ³xima funÃ§Ã£o.
+     ===================================================== */
+
+  return {
+    usuarioId,
+    endereco,
+    freteId: dados.freteId,
+    itens,
+    subtotal,
+  };
+}
+
+/* =========================================================
+   VALIDAR FRETE DO PEDIDO - PÃDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   - Validar cliente, endereÃ§o e produtos.
+   - Montar as embalagens.
+   - Consultar novamente o Melhor Envio.
+   - Conferir a modalidade escolhida.
+   - Calcular o valor total.
+
+   NÃ£o cria pedidos, cobranÃ§as ou etiquetas.
+   ========================================================= */
+
+export async function prepararPedidoComFrete(
+  usuarioId: number,
+  entrada: unknown
+) {
+  /* =====================================================
+     1. VALIDAR CLIENTE, ENDEREÃ‡O E PRODUTOS
+     ===================================================== */
+
+  const pedido = await prepararNovoPedido(
+    usuarioId,
+    entrada
+  );
+
+  /* =====================================================
+     2. MONTAR UNIDADES PARA EMBALAGEM
+     ===================================================== */
+
+  const unidades: UnidadeEmbalagem[] = [];
+
+  for (const item of pedido.itens) {
+    // Cada produto precisa possuir peso vÃ¡lido.
+    if (
+      item.pesoGramas === null ||
+      !Number.isSafeInteger(item.pesoGramas) ||
+      item.pesoGramas <= 0
+    ) {
+      throw new PedidoServiceError(
+        `O produto ${item.nomeProduto} nÃ£o possui peso vÃ¡lido.`,
+        422
+      );
+    }
+
+    // Adiciona uma unidade para cada peÃ§a comprada.
+    for (let i = 0; i < item.quantidade; i++) {
+      unidades.push({
+        pesoGramas: item.pesoGramas,
+        valor: Number(item.precoUnitario),
+        categoria: item.categoriaSlug,
+      });
+    }
+  }
+
+  /* =====================================================
+     3. CALCULAR EMBALAGENS
+     ===================================================== */
+
+  let resultadoEmbalagem: ReturnType<
+    typeof montarVolumesFrete
+  >;
+
+  try {
+    resultadoEmbalagem = montarVolumesFrete(unidades);
+  } catch (error) {
+    if (error instanceof EmbalagemFreteError) {
+      throw new PedidoServiceError(
+        error.message,
+        422
+      );
+    }
+
+    throw error;
+  }
+
+  /* =====================================================
+     4. CONSULTAR NOVAMENTE O MELHOR ENVIO
+     =====================================================
+     O CEP vem do endereÃ§o cadastrado no banco.
+
+     O preÃ§o do frete nunca Ã© aceito diretamente
+     do navegador.
+     ===================================================== */
+
+  const opcoes = await cotarFreteMelhorEnvio({
+    cepDestino: pedido.endereco.cep,
+    volumes: resultadoEmbalagem.volumes,
+    valorSegurado: resultadoEmbalagem.valorSegurado,
+  });
+
+  /* =====================================================
+     5. CONFERIR A MODALIDADE SELECIONADA
+     ===================================================== */
+
+  const freteSelecionado = opcoes.find(
+    (opcao) => opcao.id === pedido.freteId
+  );
+
+  if (!freteSelecionado) {
+    throw new PedidoServiceError(
+      "A modalidade de frete selecionada nÃ£o estÃ¡ mais disponÃ­vel. FaÃ§a uma nova cotaÃ§Ã£o.",
+      409
+    );
+  }
+
+  /* =====================================================
+     6. CALCULAR VALOR TOTAL DO PEDIDO
+     ===================================================== */
+
+  const valorFrete = new Prisma.Decimal(
+    freteSelecionado.preco.toFixed(2)
+  );
+
+  const valorTotal = pedido.subtotal.plus(valorFrete);
+
+  /* =====================================================
+     7. RETORNAR PEDIDO PREPARADO
+     =====================================================
+     Os dados estÃ£o prontos para o Repository,
+     mas ainda nÃ£o foram gravados.
+     ===================================================== */
+
+  return {
+    ...pedido,
+    frete: {
+      id: freteSelecionado.id,
+      nome: freteSelecionado.nome,
+      transportadora: freteSelecionado.transportadora,
+      prazoDias: freteSelecionado.prazoDias,
+    },
+    valorFrete,
+    valorTotal,
+  };
+} // CORREÃ‡ÃƒO: encerra prepararPedidoComFrete()
+
+/* =========================================================
+   CRIAR PEDIDO - PÃDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   1. Validar cliente, endereÃ§o e produtos.
+   2. Consultar novamente o Melhor Envio.
+   3. Calcular os valores oficiais.
+   4. Registrar o pedido no banco de dados.
+
+   IMPORTANTE:
+   - NÃ£o processa pagamentos.
+   - NÃ£o reserva nem desconta estoque.
+   - NÃ£o gera etiquetas de envio.
+   - NÃ£o impede pedidos duplicados.
+
+   Esta funÃ§Ã£o nÃ£o deve ser exposta publicamente
+   antes da implementaÃ§Ã£o dessas proteÃ§Ãµes.
+   ========================================================= */
+
+
+
+/* =========================================================
+   CRIAR PEDIDO - PÃDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   1. Validar os dados do cliente e dos produtos.
+   2. Conferir o frete com o Melhor Envio.
+   3. Preparar a identificaÃ§Ã£o do pedido.
+   4. Definir o prazo da reserva de estoque.
+   5. Enviar os dados ao Repository.
+
+   IMPORTANTE:
+   A idempotÃªncia definitiva e a liberaÃ§Ã£o automÃ¡tica
+   do estoque serÃ£o implementadas nas prÃ³ximas etapas.
+   ========================================================= */
+
+export async function criarNovoPedido(
+  usuarioId: number,
+  entrada: unknown
+) {
+  /* =====================================================
+     1. PREPARAR E VALIDAR O PEDIDO
+     ===================================================== */
+
+/* =====================================================
+   1. VALIDAR A SOLICITAÃ‡ÃƒO DO CHECKOUT
+   ===================================================== */
+
+// Confere os dados enviados pelo cliente.
+const dadosValidados = validarDadosNovoPedido(entrada);
+
+/* =====================================================
+   GERAR A IDENTIFICAÃ‡ÃƒO DOS DADOS DO CHECKOUT
+   =====================================================
+   O hash considera:
+   - Cliente autenticado.
+   - EndereÃ§o selecionado.
+   - Modalidade de frete.
+   - Produtos e quantidades.
+
+   Ordenamos os produtos para que a mesma compra
+   gere o mesmo hash, independentemente da ordem
+   em que os itens foram enviados.
+   ===================================================== */
+
+// Organiza os produtos em uma ordem consistente.
+const itensOrdenados = [...dadosValidados.itens].sort(
+  (a, b) => a.variantId - b.variantId
+);
+
+// Monta a representaÃ§Ã£o normalizada da compra.
+const dadosParaHash = {
+  usuarioId,
+  enderecoId: dadosValidados.enderecoId,
+  freteId: dadosValidados.freteId,
+  itens: itensOrdenados.map((item) => ({
+    variantId: item.variantId,
+    quantity: item.quantity,
+  })),
+};
+
+// Calcula o SHA-256 dos dados da tentativa de checkout.
+const hashCheckout = createHash("sha256")
+  .update(JSON.stringify(dadosParaHash))
+  .digest("hex");
+
+// ObtÃ©m a chave estÃ¡vel da tentativa de compra.
+const chaveIdempotencia = validarChaveIdempotencia(
+  (entrada as Record<string, unknown>).chaveIdempotencia
+);
+
+/* =====================================================
+   2. CONSULTAR TENTATIVA ANTERIOR
+   ===================================================== */
+
+const pedidoExistente =
+  await buscarPedidoPorChaveIdempotencia(chaveIdempotencia);
+
+/* =====================================================
+   VERIFICAR SE A TENTATIVA JÃ FOI REGISTRADA
+   ===================================================== */
+
+if (pedidoExistente) {
+  // Impede que um cliente acesse pedidos de outro usuÃ¡rio.
+  if (pedidoExistente.usuarioId !== usuarioId) {
+    throw new PedidoServiceError(
+      "Chave de idempotÃªncia jÃ¡ utilizada.",
+      409
+    );
+  }
+
+  // Impede reutilizar a mesma chave com outra compra.
+  // Pedidos antigos sem hash nÃ£o podem ser comparados.
+  if (
+    !pedidoExistente.hashCheckout ||
+    pedidoExistente.hashCheckout !== hashCheckout
+  ) {
+    throw new PedidoServiceError(
+      "Esta chave de idempotÃªncia jÃ¡ foi utilizada com dados diferentes.",
+      409
+    );
+  }
+
+  // Retorna a compra original sem reservar estoque novamente.
+  // O status e o prazo da reserva continuam sendo os originais.
+  return {
+    id: pedidoExistente.id,
+    status: pedidoExistente.status,
+    valorTotal: pedidoExistente.valorTotal,
+    criadoEm: pedidoExistente.criadoEm,
+  };
+}
+
+/* =====================================================
+   3. PREPARAR UM NOVO PEDIDO
+   ===================================================== */
+
+// Somente pedidos inÃ©ditos chegam Ã  cotaÃ§Ã£o de frete.
+const pedidoPreparado = await prepararPedidoComFrete(
+  usuarioId,
+  dadosValidados
+);
+
+  /* =====================================================
+     2. GERAR A IDENTIFICAÃ‡ÃƒO DA TENTATIVA
+     =====================================================
+     Por enquanto, geramos um UUID no servidor.
+
+     Esta implementaÃ§Ã£o Ã© temporÃ¡ria:
+     a idempotÃªncia real exigirÃ¡ uma chave estÃ¡vel
+     para a mesma tentativa de checkout.
+     ===================================================== */
+
+
+
+  /* =====================================================
+     3. DEFINIR A EXPIRAÃ‡ÃƒO DA RESERVA
+     =====================================================
+     A reserva terÃ¡ um prazo inicial de 15 minutos.
+
+     Isso apenas registra a data no banco.
+     NÃ£o existe liberaÃ§Ã£o automÃ¡tica nesta etapa.
+     ===================================================== */
+
+  const reservaExpiraEm = new Date(
+    Date.now() + 15 * 60 * 1000
+  );
+
+  /* =====================================================
+     4. REGISTRAR O PEDIDO NO BANCO
+     =====================================================
+     O Repository serÃ¡ responsÃ¡vel por:
+     - Criar o pedido.
+     - Reservar o estoque.
+     - Registrar os itens.
+     - Salvar o endereÃ§o.
+     - Registrar a entrega.
+     - Criar o histÃ³rico.
+
+     Todas essas operaÃ§Ãµes devem ocorrer dentro
+     da mesma transaÃ§Ã£o Prisma.
+     ===================================================== */
+
+  // Tenta registrar o pedido e reservar o estoque.
+  // Se outra requisiÃ§Ã£o jÃ¡ utilizou a mesma chave,
+  // o erro serÃ¡ tratado sem criar uma segunda compra.
+  try {
+
+    const pedidoRegistrado = await registrarPedido({
+      // IdentificaÃ§Ã£o do cliente.
+      usuarioId: pedidoPreparado.usuarioId,
+
+      // IdentificaÃ§Ã£o da tentativa de checkout.
+      chaveIdempotencia,
+
+      // Identifica os dados originais da compra.
+      // SerÃ¡ comparado nas tentativas repetidas.
+      hashCheckout,
+
+      // Prazo de validade da reserva.
+      reservaExpiraEm,
+
+      // Valores calculados pelo servidor.
+      subtotal: pedidoPreparado.subtotal,
+      valorFrete: pedidoPreparado.valorFrete,
+      valorTotal: pedidoPreparado.valorTotal,
+
+      /* =================================================
+        ENDEREÃ‡O DE ENTREGA
+        ================================================= */
+
+      endereco: {
+        destinatario: pedidoPreparado.endereco.destinatario,
+        cep: pedidoPreparado.endereco.cep,
+        logradouro: pedidoPreparado.endereco.logradouro,
+        numero: pedidoPreparado.endereco.numero,
+        complemento: pedidoPreparado.endereco.complemento,
+        bairro: pedidoPreparado.endereco.bairro,
+        cidade: pedidoPreparado.endereco.cidade,
+        estado: pedidoPreparado.endereco.estado,
+      },
+
+      /* =================================================
+        INFORMAÃ‡Ã•ES DO FRETE
+        ================================================= */
+
+      frete: {
+        nome: pedidoPreparado.frete.nome,
+        transportadora: pedidoPreparado.frete.transportadora,
+      },
+
+      /* =================================================
+        PRODUTOS DO PEDIDO
+        ================================================= */
+
+      itens: pedidoPreparado.itens.map((item) => ({
+        varianteId: item.varianteId,
+        nomeProduto: item.nomeProduto,
+        tamanho: item.tamanho,
+        cor: item.cor,
+        quantidade: item.quantidade,
+        precoUnitario: item.precoUnitario,
+        subtotal: item.subtotal,
+      })),
+    });
+
+  /* =====================================================
+     5. RETORNAR O PEDIDO REGISTRADO
+     ===================================================== */
+
+  // Primeira tentativa concluÃ­da: retorna o pedido criado.
+  return pedidoRegistrado;
+
+} catch (erro: unknown) {
+  /*
+   * P2002: violaÃ§Ã£o de restriÃ§Ã£o UNIQUE do Prisma.
+   *
+   * Pode ocorrer quando duas requisiÃ§Ãµes tentam
+   * registrar a mesma chave simultaneamente.
+   */
+  if (
+    erro instanceof Prisma.PrismaClientKnownRequestError &&
+    erro.code === "P2002"
+  ) {
+    // Consulta novamente o pedido que venceu a concorrÃªncia.
+    const pedidoExistente =
+      await buscarPedidoPorChaveIdempotencia(chaveIdempotencia);
+
+    // Se nÃ£o existir pedido com essa chave, o conflito
+    // pode ter ocorrido em outra restriÃ§Ã£o UNIQUE.
+    if (!pedidoExistente) {
+      throw erro;
+    }
+
+    // Impede acesso a pedidos de outro cliente.
+    if (pedidoExistente.usuarioId !== usuarioId) {
+      throw new PedidoServiceError(
+        "Chave de idempotÃªncia jÃ¡ utilizada.",
+        409
+      );
+    }
+
+    // A chave nÃ£o pode representar duas compras diferentes.
+    if (
+      !pedidoExistente.hashCheckout ||
+      pedidoExistente.hashCheckout !== hashCheckout
+    ) {
+      throw new PedidoServiceError(
+        "Esta chave jÃ¡ foi utilizada com dados diferentes.",
+        409
+      );
+    }
+
+    // Retorna o pedido original sem reservar estoque novamente.
+    return {
+      id: pedidoExistente.id,
+      status: pedidoExistente.status,
+      valorTotal: pedidoExistente.valorTotal,
+      criadoEm: pedidoExistente.criadoEm,
+    };
+  }
+
+  // Erros de estoque, banco ou outros problemas
+  // nÃ£o devem ser tratados como pedidos duplicados.
+  throw erro;
+}
+}
+
+
+
+========== src/services/mercadoPagoService.ts ==========
+
+/* =========================================================
+   MERCADO PAGO SERVICE - PÃDUA CULTURE
+   =========================================================
+   IntegraÃ§Ã£o com Checkout Pro pela API de Orders.
+
+   Este serviÃ§o:
+   - Recebe dados de um pedido jÃ¡ validado.
+   - Cria uma order no Mercado Pago.
+   - Retorna o ID e a URL de pagamento.
+
+   NÃ£o deve ser chamado diretamente pelo navegador.
+   ========================================================= */
+
+import { Prisma } from "@prisma/client";
+
+const MERCADO_PAGO_API =
+  "https://api.mercadopago.com/v1/orders";
+
+/* =========================================================
+   TIPOS DE DADOS
+   ========================================================= */
+
+export type ItemPagamentoMercadoPago = {
+  nome: string;
+  quantidade: number;
+  precoUnitario: Prisma.Decimal;
+};
+
+export type DadosPagamentoMercadoPago = {
+  pedidoId: number;
+  valorTotal: Prisma.Decimal;
+  itens: ItemPagamentoMercadoPago[];
+
+  // Chave persistida e reutilizada nas tentativas
+  // de repetiÃ§Ã£o da mesma operaÃ§Ã£o.
+  chaveIdempotencia: string;
+};
+
+type RespostaOrderMercadoPago = {
+  id?: string;
+  checkout_url?: string;
+  status?: string;
+};
+
+/* =========================================================
+   CRIAR ORDER DE PAGAMENTO
+   ========================================================= */
+
+export async function criarOrderMercadoPago(
+  dados: DadosPagamentoMercadoPago
+) {
+  /* =====================================================
+     1. VALIDAR CONFIGURAÃ‡ÃƒO
+     ===================================================== */
+
+  const accessToken =
+    process.env.MERCADO_PAGO_ACCESS_TOKEN;
+
+  if (!accessToken) {
+    throw new Error(
+      "Access Token do Mercado Pago nÃ£o configurado."
+    );
+  }
+
+  /* =====================================================
+     2. VALIDAR IDENTIFICADORES E VALORES
+     ===================================================== */
+
+  if (
+    !Number.isSafeInteger(dados.pedidoId) ||
+    dados.pedidoId <= 0
+  ) {
+    throw new Error("Identificador do pedido invÃ¡lido.");
+  }
+
+  if (
+    !dados.valorTotal.isFinite() ||
+    dados.valorTotal.lessThanOrEqualTo(0)
+  ) {
+    throw new Error("Valor do pedido invÃ¡lido.");
+  }
+
+  if (
+    !Array.isArray(dados.itens) ||
+    dados.itens.length === 0
+  ) {
+    throw new Error("Pedido sem itens para pagamento.");
+  }
+
+  // UUID vÃ¡lido, gerado e persistido pelo backend.
+  const formatoUUID =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  if (!formatoUUID.test(dados.chaveIdempotencia)) {
+    throw new Error("Chave de idempotÃªncia invÃ¡lida.");
+  }
+
+  /* =====================================================
+     3. PREPARAR OS ITENS
+     ===================================================== */
+
+  const itens = dados.itens.map((item) => {
+    if (
+      !item.nome.trim() ||
+      !Number.isSafeInteger(item.quantidade) ||
+      item.quantidade <= 0 ||
+      !item.precoUnitario.isFinite() ||
+      item.precoUnitario.lessThan(0)
+    ) {
+      throw new Error("Item de pagamento invÃ¡lido.");
+    }
+
+    return {
+      title: item.nome,
+      quantity: item.quantidade,
+      unit_price: item.precoUnitario.toFixed(2),
+    };
+  });
+
+  /* =====================================================
+     4. CONFERIR A SOMA DOS ITENS
+     =====================================================
+     O Mercado Pago exige que a soma dos itens
+     corresponda ao total da order.
+     ===================================================== */
+
+  const somaItens = dados.itens.reduce(
+    (total, item) =>
+      total.plus(
+        item.precoUnitario.mul(item.quantidade)
+      ),
+    new Prisma.Decimal(0)
+  );
+
+  if (!somaItens.equals(dados.valorTotal)) {
+    throw new Error(
+      "A soma dos itens nÃ£o corresponde ao valor total."
+    );
+  }
+
+  /* =====================================================
+     5. ENVIAR REQUISIÃ‡ÃƒO AO MERCADO PAGO
+     ===================================================== */
+
+  const resposta = await fetch(MERCADO_PAGO_API, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "X-Idempotency-Key": dados.chaveIdempotencia,
+    },
+    body: JSON.stringify({
+      type: "online",
+      processing_mode: "manual",
+      total_amount: dados.valorTotal.toFixed(2),
+      external_reference: String(dados.pedidoId),
+      items: itens,
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15000),
+  });
+
+  /* =====================================================
+     6. VALIDAR RESPOSTA
+     ===================================================== */
+
+  if (!resposta.ok) {
+    // NÃ£o registrar o corpo da resposta ou credenciais
+    // em logs de produÃ§Ã£o.
+    throw new Error(
+      `Mercado Pago retornou HTTP ${resposta.status}.`
+    );
+  }
+
+  const resultado =
+    (await resposta.json()) as RespostaOrderMercadoPago;
+
+  if (
+    typeof resultado.id !== "string" ||
+    !resultado.id ||
+    typeof resultado.checkout_url !== "string"
+  ) {
+    throw new Error(
+      "Resposta de pagamento incompleta."
+    );
+  }
+
+  // Verifica se a URL pertence a um domÃ­nio HTTPS
+  // esperado do Mercado Pago.
+  const urlPagamento = new URL(resultado.checkout_url);
+
+  if (
+    urlPagamento.protocol !== "https:" ||
+    !(
+      urlPagamento.hostname === "mercadopago.com.br" ||
+      urlPagamento.hostname.endsWith(".mercadopago.com.br")
+    )
+  ) {
+    throw new Error(
+      "URL de pagamento invÃ¡lida."
+    );
+  }
+
+  /* =====================================================
+     7. RETORNAR DADOS PARA O BACKEND
+     ===================================================== */
+
+  return {
+    mercadoPagoOrderId: resultado.id,
+    checkoutUrl: urlPagamento.toString(),
+    status: resultado.status ?? "created",
+  };
+}
+
+========== src/controllers/pedidoController.ts ==========
+
+/* =========================================================
+   PEDIDO CONTROLLER - PÃDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   - Validar a autenticaÃ§Ã£o do cliente.
+   - Verificar se a sessÃ£o continua ativa.
+   - Validar a origem da requisiÃ§Ã£o.
+   - Preparar a integraÃ§Ã£o com o PedidoService.
+
+   Fluxo:
+   Route -> Controller -> Service -> Repository -> Prisma
+   ========================================================= */
+
+import { NextRequest, NextResponse } from "next/server";
+
+import { prisma } from "../../lib/prisma";
+import { validarAuthToken } from "../utils/authToken";
+
+/* =========================================================
+   CONTROLLER - CRIAR PEDIDO
+   ========================================================= */
+
+export async function criarPedidoController(
+  request: NextRequest
+) {
+  try {
+    /* =====================================================
+       1. IDENTIFICAR O COOKIE DE AUTENTICAÃ‡ÃƒO
+       ===================================================== */
+
+    const token = request.cookies.get("padua_session")?.value;
+
+    if (!token) {
+      return NextResponse.json(
+        { erro: "UsuÃ¡rio nÃ£o autenticado." },
+        { status: 401 }
+      );
+    }
+
+    /* =====================================================
+       2. VALIDAR O JWT
+       ===================================================== */
+
+    let usuarioId: number;
+    let versaoSessao: number;
+
+    try {
+      const payload = await validarAuthToken(token);
+
+      usuarioId = Number(payload.usuarioId);
+      versaoSessao = Number(payload.versaoSessao);
+    } catch {
+      return NextResponse.json(
+        { erro: "SessÃ£o invÃ¡lida ou expirada." },
+        { status: 401 }
+      );
+    }
+
+    /* =====================================================
+       3. VERIFICAR SE A SESSÃƒO FOI REVOGADA
+       ===================================================== */
+
+    const usuario = await prisma.usuario.findUnique({
+      where: {
+        id: usuarioId,
+      },
+      select: {
+        id: true,
+        versaoSessao: true,
+      },
+    });
+
+    if (
+      !usuario ||
+      usuario.versaoSessao !== versaoSessao
+    ) {
+      return NextResponse.json(
+        { erro: "SessÃ£o revogada. FaÃ§a login novamente." },
+        { status: 401 }
+      );
+    }
+
+    /* =====================================================
+       4. VALIDAR A ORIGEM DA REQUISIÃ‡ÃƒO
+       =====================================================
+       ProteÃ§Ã£o contra requisiÃ§Ãµes externas que tentem
+       utilizar o cookie de autenticaÃ§Ã£o do cliente.
+       ===================================================== */
+
+    const origin = request.headers.get("origin");
+
+    if (!origin) {
+      return NextResponse.json(
+        { erro: "Origem da requisiÃ§Ã£o nÃ£o informada." },
+        { status: 403 }
+      );
+    }
+
+    try {
+      const origem = new URL(origin);
+      const destino = new URL(request.url);
+
+      if (origem.origin !== destino.origin) {
+        return NextResponse.json(
+          { erro: "Origem da requisiÃ§Ã£o nÃ£o autorizada." },
+          { status: 403 }
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { erro: "Origem da requisiÃ§Ã£o invÃ¡lida." },
+        { status: 403 }
+      );
+    }
+
+    /* =====================================================
+       5. VALIDAR O CORPO DA REQUISIÃ‡ÃƒO
+       ===================================================== */
+
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { erro: "JSON invÃ¡lido." },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
+      return NextResponse.json(
+        { erro: "Dados do pedido invÃ¡lidos." },
+        { status: 400 }
+      );
+    }
+
+    /* =====================================================
+       6. PREPARAR A CRIAÃ‡ÃƒO DO PEDIDO
+       =====================================================
+       O Service serÃ¡ implementado na prÃ³xima etapa.
+
+       Ainda nÃ£o criamos pedidos nem movimentamos estoque.
+       ===================================================== */
+
+    return NextResponse.json(
+      {
+        mensagem:
+          "AutenticaÃ§Ã£o validada. A criaÃ§Ã£o de pedidos ainda nÃ£o estÃ¡ habilitada.",
+      },
+      {
+        status: 501,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  } catch (error) {
+    console.error(
+      "[PEDIDO CONTROLLER] Erro ao processar pedido:",
+      error
+    );
+
+    return NextResponse.json(
+      { erro: "NÃ£o foi possÃ­vel processar o pedido." },
+      { status: 500 }
+    );
+  }
+}
+
+========== app/api/pedidos/route.ts ==========
+
+/* =========================================================
+   API DE PEDIDOS - PÃDUA CULTURE
+   =========================================================
+   Endpoint:
+   POST /api/pedidos
+
+   Responsabilidades:
+   - Receber a requisiÃ§Ã£o HTTP.
+   - Encaminhar os dados para o Controller.
+   - NÃ£o implementar regras de negÃ³cio nesta camada.
+
+   Fluxo:
+   Route -> Controller -> Service -> Repository -> Prisma
+   ========================================================= */
+
+import { NextResponse } from "next/server";
+
+/* =========================================================
+   CONFIGURAÃ‡ÃƒO DA ROTA
+   =========================================================
+   Pedidos dependem de autenticaÃ§Ã£o e banco de dados.
+   A rota nÃ£o deve ser armazenada em cache.
+   ========================================================= */
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/* =========================================================
+   POST /api/pedidos
+   =========================================================
+   ImplementaÃ§Ã£o temporÃ¡ria.
+
+   A criaÃ§Ã£o de pedidos serÃ¡ habilitada apÃ³s a
+   implementaÃ§Ã£o e validaÃ§Ã£o das demais camadas.
+   ========================================================= */
+
+export async function POST() {
+  return NextResponse.json(
+    {
+      erro: "A criaÃ§Ã£o de pedidos ainda nÃ£o estÃ¡ disponÃ­vel.",
+    },
+    {
+      status: 501,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+}

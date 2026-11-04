@@ -30,6 +30,10 @@ export type ItemPagamentoMercadoPago = {
 export type DadosPagamentoMercadoPago = {
   pedidoId: number;
   valorTotal: Prisma.Decimal;
+
+  // Valor do frete calculado e salvo no pedido.
+  valorFrete: Prisma.Decimal;
+
   itens: ItemPagamentoMercadoPago[];
 
   // Chave persistida e reutilizada nas tentativas
@@ -118,6 +122,23 @@ export async function criarOrderMercadoPago(
     };
   });
 
+  // Adiciona o frete como um item separado no pagamento.
+  // O valor vem do pedido validado pelo servidor.
+  if (
+    !dados.valorFrete.isFinite() ||
+    dados.valorFrete.lessThan(0)
+  ) {
+    throw new Error("Valor do frete inválido.");
+  }
+
+  if (dados.valorFrete.greaterThan(0)) {
+    itens.push({
+      title: "Frete",
+      quantity: 1,
+      unit_price: dados.valorFrete.toFixed(2),
+    });
+  }
+
   /* =====================================================
      4. CONFERIR A SOMA DOS ITENS
      =====================================================
@@ -125,13 +146,15 @@ export async function criarOrderMercadoPago(
      corresponda ao total da order.
      ===================================================== */
 
-  const somaItens = dados.itens.reduce(
-    (total, item) =>
-      total.plus(
-        item.precoUnitario.mul(item.quantidade)
-      ),
-    new Prisma.Decimal(0)
-  );
+    // Soma os produtos e o frete para conferir
+    // o valor total que será cobrado.
+    const somaItens = dados.itens.reduce(
+      (total, item) =>
+        total.plus(
+          item.precoUnitario.mul(item.quantidade)
+        ),
+      new Prisma.Decimal(0)
+    ).plus(dados.valorFrete);
 
   if (!somaItens.equals(dados.valorTotal)) {
     throw new Error(

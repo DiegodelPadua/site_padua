@@ -1,0 +1,2412 @@
+﻿========== app/checkout/page.tsx ==========
+
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { useCart } from "../context/CartContext";
+import "./checkout.css";
+
+/* =========================================================
+   PÃDUA CULTURE â€” CHECKOUT
+   MantÃ©m autenticaÃ§Ã£o, endereÃ§os, ViaCEP e sacola.
+   Acrescenta cotaÃ§Ã£o e seleÃ§Ã£o de frete.
+   ========================================================= */
+
+type UsuarioCheckout = {
+  id: number;
+  nome: string;
+  sobrenome: string;
+  email: string;
+  telefone?: string | null;
+};
+
+type EnderecoCheckout = {
+  id: number;
+  apelido: string | null;
+  destinatario: string;
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string | null;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  principal: boolean;
+};
+
+type DadosEntrega = {
+  cep: string;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+};
+
+type OpcaoFreteCheckout = {
+  id: number;
+  nome: string;
+  transportadora: string;
+  preco: number;
+  prazoDias: number | null;
+};
+
+const entregaInicial: DadosEntrega = {
+  cep: "",
+  endereco: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
+  cidade: "",
+  estado: "",
+};
+
+function formatarMoeda(valor: number) {
+  return valor.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function somenteNumeros(valor: string) {
+  return valor.replace(/\D/g, "");
+}
+
+export default function Checkout() {
+  /* =======================================================
+     SACOLA
+     ======================================================= */
+
+  const { items } = useCart();
+
+  const subtotal = items.reduce(
+    (total, item) => total + item.price * item.quantity,
+    0
+  );
+
+  const quantidadeItens = items.reduce(
+    (total, item) => total + item.quantity,
+    0
+  );
+
+  /* =======================================================
+     AUTENTICAÃ‡ÃƒO
+     ======================================================= */
+
+  const [usuario, setUsuario] =
+    useState<UsuarioCheckout | null>(null);
+
+  const [carregandoUsuario, setCarregandoUsuario] =
+    useState(true);
+
+  const [erroUsuario, setErroUsuario] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function consultarCliente() {
+      try {
+        const resposta = await fetch("/api/auth/me", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (resposta.status === 401) {
+          setUsuario(null);
+          return;
+        }
+
+        if (!resposta.ok) {
+          throw new Error(
+            "NÃ£o foi possÃ­vel consultar sua conta."
+          );
+        }
+
+        const dados = await resposta.json();
+
+        if (!controller.signal.aborted) {
+          setUsuario(
+            dados.autenticado && dados.usuario
+              ? dados.usuario
+              : null
+          );
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setErroUsuario(
+            "NÃ£o foi possÃ­vel carregar seus dados."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCarregandoUsuario(false);
+        }
+      }
+    }
+
+    void consultarCliente();
+
+    return () => controller.abort();
+  }, []);
+
+  /* =======================================================
+     ENDEREÃ‡OS
+     ======================================================= */
+
+  const [enderecos, setEnderecos] =
+    useState<EnderecoCheckout[]>([]);
+
+  const [
+    enderecoSelecionadoId,
+    setEnderecoSelecionadoId,
+  ] = useState<number | null>(null);
+
+  const [
+    carregandoEnderecos,
+    setCarregandoEnderecos,
+  ] = useState(true);
+
+  const [salvandoEndereco, setSalvandoEndereco] =
+    useState(false);
+
+  const [mensagemEndereco, setMensagemEndereco] =
+    useState("");
+
+  const [dadosEntrega, setDadosEntrega] =
+    useState<DadosEntrega>(entregaInicial);
+
+  // Impede respostas antigas de sobrescreverem
+  // informaÃ§Ãµes digitadas manualmente.
+  const versaoEdicaoEndereco = useRef(0);
+
+  const consultaCepController =
+    useRef<AbortController | null>(null);
+
+  const [consultandoCep, setConsultandoCep] =
+    useState(false);
+
+  const [mensagemCep, setMensagemCep] = useState("");
+
+  /* =======================================================
+     FRETE
+     ======================================================= */
+
+  const [opcoesFrete, setOpcoesFrete] =
+    useState<OpcaoFreteCheckout[]>([]);
+
+  const [freteSelecionadoId, setFreteSelecionadoId] =
+    useState<number | null>(null);
+
+  const [cotandoFrete, setCotandoFrete] =
+    useState(false);
+
+  const [erroFrete, setErroFrete] = useState("");
+
+  const [mensagemPagamento, setMensagemPagamento] =
+    useState("");
+
+  const cotacaoController =
+    useRef<AbortController | null>(null);
+
+  const cepCotacao = somenteNumeros(dadosEntrega.cep);
+
+  // Detecta alteraÃ§Ãµes na sacola, inclusive quantidade.
+  const chaveSacola = JSON.stringify(
+    items.map((item) => [
+      item.id,
+      item.variantId,
+      item.quantity,
+    ])
+  );
+
+  // Uma cotaÃ§Ã£o anterior deixa de ser vÃ¡lida
+  // quando o CEP ou os itens mudam.
+  useEffect(() => {
+    cotacaoController.current?.abort();
+    cotacaoController.current = null;
+
+    setOpcoesFrete([]);
+    setFreteSelecionadoId(null);
+    setErroFrete("");
+    setMensagemPagamento("");
+    setCotandoFrete(false);
+  }, [cepCotacao, chaveSacola]);
+
+  /* =======================================================
+     FUNÃ‡Ã•ES DE ENDEREÃ‡O
+     ======================================================= */
+
+  function registrarEdicaoEndereco() {
+    versaoEdicaoEndereco.current += 1;
+
+    consultaCepController.current?.abort();
+    consultaCepController.current = null;
+
+    setConsultandoCep(false);
+    setMensagemCep("");
+
+    // Um endereÃ§o editado nÃ£o corresponde mais
+    // necessariamente ao endereÃ§o salvo.
+    setEnderecoSelecionadoId(null);
+    setMensagemEndereco("");
+  }
+
+  function preencherEndereco(endereco: EnderecoCheckout) {
+    consultaCepController.current?.abort();
+    consultaCepController.current = null;
+
+    versaoEdicaoEndereco.current += 1;
+
+    setConsultandoCep(false);
+    setMensagemCep("");
+
+    setEnderecoSelecionadoId(endereco.id);
+
+    setDadosEntrega({
+      cep: endereco.cep,
+      endereco: endereco.logradouro,
+      numero: endereco.numero,
+      complemento: endereco.complemento ?? "",
+      bairro: endereco.bairro,
+      cidade: endereco.cidade,
+      estado: endereco.estado,
+    });
+  }
+
+  function alterarCampo(
+    campo: keyof DadosEntrega,
+    valor: string
+  ) {
+    registrarEdicaoEndereco();
+
+    setDadosEntrega((anterior) => ({
+      ...anterior,
+      [campo]: valor,
+    }));
+  }
+
+  /* =======================================================
+     CONSULTAR ENDEREÃ‡OS CADASTRADOS
+     ======================================================= */
+
+  useEffect(() => {
+    if (carregandoUsuario) return;
+
+    if (!usuario) {
+      setEnderecos([]);
+      setCarregandoEnderecos(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const versaoInicial =
+      versaoEdicaoEndereco.current;
+
+    async function consultarEnderecos() {
+      setCarregandoEnderecos(true);
+      setMensagemEndereco("");
+
+      try {
+        const resposta = await fetch("/api/enderecos", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!resposta.ok) {
+          throw new Error(
+            "NÃ£o foi possÃ­vel consultar os endereÃ§os."
+          );
+        }
+
+        const dados = await resposta.json();
+
+        const lista: EnderecoCheckout[] =
+          Array.isArray(dados.enderecos)
+            ? dados.enderecos
+            : [];
+
+        if (controller.signal.aborted) return;
+
+        setEnderecos(lista);
+
+        const principal =
+          lista.find((endereco) => endereco.principal) ??
+          lista[0];
+
+        if (
+          principal &&
+          versaoEdicaoEndereco.current === versaoInicial
+        ) {
+          preencherEndereco(principal);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setMensagemEndereco(
+            "NÃ£o foi possÃ­vel carregar seus endereÃ§os."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCarregandoEnderecos(false);
+        }
+      }
+    }
+
+    void consultarEnderecos();
+
+    return () => controller.abort();
+  }, [usuario?.id, carregandoUsuario]);
+
+  /* =======================================================
+     CONSULTA AUTOMÃTICA DE CEP â€” VIACEP
+     ======================================================= */
+
+  async function consultarCEP(
+    cep: string,
+    versaoDaDigitacao: number
+  ) {
+    const numeros = somenteNumeros(cep);
+
+    if (numeros.length !== 8) return;
+
+    consultaCepController.current?.abort();
+
+    const controller = new AbortController();
+    consultaCepController.current = controller;
+
+    setConsultandoCep(true);
+    setMensagemCep("");
+
+    try {
+      const resposta = await fetch(
+        `https://viacep.com.br/ws/${numeros}/json/`,
+        { signal: controller.signal }
+      );
+
+      if (!resposta.ok) {
+        throw new Error(
+          "ServiÃ§o de CEP indisponÃ­vel. Preencha manualmente."
+        );
+      }
+
+      const dados: {
+        erro?: boolean;
+        logradouro?: string;
+        bairro?: string;
+        localidade?: string;
+        uf?: string;
+      } = await resposta.json();
+
+      if (
+        controller.signal.aborted ||
+        versaoEdicaoEndereco.current !==
+          versaoDaDigitacao
+      ) {
+        return;
+      }
+
+      if (dados.erro) {
+        setMensagemCep(
+          "CEP nÃ£o encontrado. Confira o nÃºmero informado."
+        );
+        return;
+      }
+
+      // NÃºmero e complemento sÃ£o preservados.
+      setDadosEntrega((anterior) => ({
+        ...anterior,
+        endereco: dados.logradouro ?? "",
+        bairro: dados.bairro ?? "",
+        cidade: dados.localidade ?? "",
+        estado: dados.uf ?? "",
+      }));
+
+      if (!dados.logradouro || !dados.bairro) {
+        setMensagemCep(
+          "CEP localizado. Complete os campos nÃ£o informados."
+        );
+      }
+    } catch (erro) {
+      if (
+        !controller.signal.aborted &&
+        versaoEdicaoEndereco.current ===
+          versaoDaDigitacao
+      ) {
+        setMensagemCep(
+          erro instanceof Error
+            ? erro.message
+            : "NÃ£o foi possÃ­vel consultar o CEP."
+        );
+      }
+    } finally {
+      if (consultaCepController.current === controller) {
+        consultaCepController.current = null;
+        setConsultandoCep(false);
+      }
+    }
+  }
+
+  function alterarCEP(valor: string) {
+    const numeros = somenteNumeros(valor).slice(0, 8);
+
+    const cepFormatado =
+      numeros.length > 5
+        ? `${numeros.slice(0, 5)}-${numeros.slice(5)}`
+        : numeros;
+
+    registrarEdicaoEndereco();
+
+    const versaoAtual =
+      versaoEdicaoEndereco.current;
+
+    // Limpa os dados de um CEP anterior.
+    setDadosEntrega((anterior) => ({
+      ...anterior,
+      cep: cepFormatado,
+      endereco: "",
+      bairro: "",
+      cidade: "",
+      estado: "",
+    }));
+
+    if (numeros.length === 8) {
+      void consultarCEP(numeros, versaoAtual);
+    }
+  }
+
+  /* =======================================================
+     SALVAR ENDEREÃ‡O NO MYSQL
+     ======================================================= */
+
+  async function salvarEndereco() {
+    if (salvandoEndereco) return;
+
+    if (!usuario) {
+      setMensagemEndereco(
+        "Entre na sua conta para salvar o endereÃ§o."
+      );
+      return;
+    }
+
+    if (enderecoSelecionadoId !== null) {
+      setMensagemEndereco(
+        "Este endereÃ§o jÃ¡ estÃ¡ cadastrado."
+      );
+      return;
+    }
+
+    if (
+      !/^\d{8}$/.test(cepCotacao) ||
+      !dadosEntrega.endereco.trim() ||
+      !dadosEntrega.numero.trim() ||
+      !dadosEntrega.bairro.trim() ||
+      !dadosEntrega.cidade.trim() ||
+      !/^[A-Z]{2}$/.test(dadosEntrega.estado.trim())
+    ) {
+      setMensagemEndereco(
+        "Preencha corretamente todos os campos obrigatÃ³rios."
+      );
+      return;
+    }
+
+    setSalvandoEndereco(true);
+    setMensagemEndereco("");
+
+    try {
+      const resposta = await fetch("/api/enderecos", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          destinatario:
+            `${usuario.nome} ${usuario.sobrenome}`.trim(),
+          cep: dadosEntrega.cep,
+          logradouro: dadosEntrega.endereco,
+          numero: dadosEntrega.numero,
+          complemento: dadosEntrega.complemento,
+          bairro: dadosEntrega.bairro,
+          cidade: dadosEntrega.cidade,
+          estado: dadosEntrega.estado,
+        }),
+      });
+
+      const resultado = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(
+          resultado.erro ??
+            "NÃ£o foi possÃ­vel salvar o endereÃ§o."
+        );
+      }
+
+      const enderecoSalvo =
+        resultado.endereco as EnderecoCheckout;
+
+      setEnderecos((anteriores) => [
+        enderecoSalvo,
+        ...anteriores,
+      ]);
+
+      preencherEndereco(enderecoSalvo);
+
+      setMensagemEndereco(
+        "EndereÃ§o salvo com sucesso."
+      );
+    } catch (erro) {
+      setMensagemEndereco(
+        erro instanceof Error
+          ? erro.message
+          : "NÃ£o foi possÃ­vel salvar o endereÃ§o."
+      );
+    } finally {
+      setSalvandoEndereco(false);
+    }
+  }
+
+  /* =======================================================
+     CALCULAR FRETE â€” API MELHOR ENVIO
+     ======================================================= */
+
+  async function calcularFrete() {
+    setErroFrete("");
+    setMensagemPagamento("");
+    setFreteSelecionadoId(null);
+    setOpcoesFrete([]);
+
+    if (!usuario) {
+      setErroFrete(
+        "Entre na sua conta para calcular o frete."
+      );
+      return;
+    }
+
+    if (!/^\d{8}$/.test(cepCotacao)) {
+      setErroFrete(
+        "Informe um CEP de entrega vÃ¡lido."
+      );
+      return;
+    }
+
+    if (items.length === 0) {
+      setErroFrete("Sua sacola estÃ¡ vazia.");
+      return;
+    }
+
+    // O ID textual do carrinho nÃ£o substitui
+    // o ID numÃ©rico da variante no banco.
+    const itemSemVariante = items.some(
+      (item) =>
+        !Number.isSafeInteger(item.variantId) ||
+        (item.variantId ?? 0) <= 0
+    );
+
+    if (itemSemVariante) {
+      setErroFrete(
+        "Existem produtos antigos na sacola. Remova-os e adicione novamente pela loja."
+      );
+      return;
+    }
+
+    cotacaoController.current?.abort();
+
+    const controller = new AbortController();
+    cotacaoController.current = controller;
+
+    setCotandoFrete(true);
+
+    try {
+      const resposta = await fetch(
+        "/api/frete/cotacao",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            cepDestino: cepCotacao,
+            itens: items.map((item) => ({
+              variantId: item.variantId,
+              quantity: item.quantity,
+            })),
+          }),
+        }
+      );
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(
+          dados.erro ??
+            "NÃ£o foi possÃ­vel calcular o frete."
+        );
+      }
+
+      const opcoes: OpcaoFreteCheckout[] =
+        Array.isArray(dados.opcoes)
+          ? dados.opcoes.filter(
+              (opcao: OpcaoFreteCheckout) =>
+                Number.isSafeInteger(opcao.id) &&
+                Number.isFinite(opcao.preco) &&
+                opcao.preco >= 0
+            )
+          : [];
+
+      if (controller.signal.aborted) return;
+
+      setOpcoesFrete(opcoes);
+
+      if (opcoes.length === 0) {
+        setErroFrete(
+          "Nenhuma modalidade de entrega disponÃ­vel para este CEP."
+        );
+      }
+    } catch (erro) {
+      if (!controller.signal.aborted) {
+        setErroFrete(
+          erro instanceof Error
+            ? erro.message
+            : "Falha ao consultar o frete."
+        );
+      }
+    } finally {
+      if (cotacaoController.current === controller) {
+        cotacaoController.current = null;
+        setCotandoFrete(false);
+      }
+    }
+  }
+
+  const freteSelecionado = opcoesFrete.find(
+    (opcao) => opcao.id === freteSelecionadoId
+  );
+
+  const total =
+    subtotal + (freteSelecionado?.preco ?? 0);
+
+  /* =======================================================
+     CONTINUAR PARA PAGAMENTO
+     Ainda nÃ£o cria pedido nem cobranÃ§a.
+     ======================================================= */
+
+  function continuarParaPagamento() {
+    setMensagemPagamento("");
+
+    if (!usuario) {
+      setMensagemPagamento(
+        "Entre na sua conta para continuar."
+      );
+      return;
+    }
+
+    if (items.length === 0) {
+      setMensagemPagamento(
+        "Adicione produtos Ã  sacola."
+      );
+      return;
+    }
+
+    if (
+      !/^\d{8}$/.test(cepCotacao) ||
+      !dadosEntrega.endereco.trim() ||
+      !dadosEntrega.numero.trim() ||
+      !dadosEntrega.bairro.trim() ||
+      !dadosEntrega.cidade.trim() ||
+      !/^[A-Z]{2}$/.test(dadosEntrega.estado.trim())
+    ) {
+      setMensagemPagamento(
+        "Complete o endereÃ§o de entrega."
+      );
+      return;
+    }
+
+    if (enderecoSelecionadoId === null) {
+      setMensagemPagamento(
+        "Salve ou selecione um endereÃ§o de entrega."
+      );
+      return;
+    }
+
+    if (!freteSelecionado) {
+      setMensagemPagamento(
+        "Calcule o frete e selecione uma opÃ§Ã£o de entrega."
+      );
+      return;
+    }
+
+    // Esta etapa serÃ¡ conectada Ã  API de pedidos
+    // e ao provedor de pagamentos posteriormente.
+    setMensagemPagamento(
+      "EndereÃ§o e frete validados. A integraÃ§Ã£o de pagamento ainda nÃ£o estÃ¡ disponÃ­vel. Nenhum pedido ou cobranÃ§a foi criado."
+    );
+  }
+
+  /* =======================================================
+     INTERFACE DO CHECKOUT
+     ======================================================= */
+
+  return (
+    <main className="checkoutPage">
+      <header className="checkoutHeader">
+        <Link href="/" className="checkoutLogo">
+          PÃDUA
+        </Link>
+
+        <Link href="/" className="checkoutBack">
+          â† CONTINUAR COMPRANDO
+        </Link>
+      </header>
+
+      <div className="checkoutLayout">
+        {/* ================================================
+            LADO ESQUERDO â€” CLIENTE E ENTREGA
+            ================================================ */}
+
+        <section className="checkoutForm">
+          <span className="checkoutEyebrow">
+            CHECKOUT
+          </span>
+
+          <h1>
+            FINALIZAR
+            <br />
+            COMPRA
+          </h1>
+
+          {/* CONTATO */}
+
+          <div className="checkoutSection">
+            <div className="checkoutSectionHeader">
+              <span>01</span>
+              <h2>CONTATO</h2>
+            </div>
+
+            {carregandoUsuario && (
+              <p role="status">
+                CARREGANDO SEUS DADOS...
+              </p>
+            )}
+
+            {erroUsuario && (
+              <p role="alert">{erroUsuario}</p>
+            )}
+
+            {!carregandoUsuario &&
+              !erroUsuario &&
+              !usuario && (
+                <p>
+                  PARA FINALIZAR SUA COMPRA,{" "}
+                  <Link href="/login">
+                    ENTRE NA SUA CONTA
+                  </Link>
+                  .
+                </p>
+              )}
+
+            <div className="checkoutFields">
+              <label className="checkoutField checkoutFieldFull">
+                <span>E-MAIL</span>
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="seu@email.com"
+                  value={usuario?.email ?? ""}
+                  readOnly
+                  autoComplete="email"
+                />
+              </label>
+
+              <label className="checkoutField checkoutFieldFull">
+                <span>TELEFONE</span>
+                <input
+                  type="tel"
+                  name="telefone"
+                  placeholder="(11) 99999-9999"
+                  value={usuario?.telefone ?? ""}
+                  readOnly
+                  autoComplete="tel"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* ENTREGA */}
+
+          <div className="checkoutSection">
+            <div className="checkoutSectionHeader">
+              <span>02</span>
+              <h2>ENTREGA</h2>
+            </div>
+
+            {carregandoEnderecos && usuario && (
+              <p role="status">
+                CARREGANDO ENDEREÃ‡OS...
+              </p>
+            )}
+
+
+          {/* =====================================================
+              ENDEREÃ‡OS CADASTRADOS â€” PÃDUA CULTURE
+              ===================================================== */}
+
+          {!carregandoEnderecos && enderecos.length > 0 && (
+            <div className="checkoutSavedAddresses">
+              <div className="checkoutAddressHeading">
+                <h3>SEUS ENDEREÃ‡OS CADASTRADOS</h3>
+                <span>SELECIONE ONDE DESEJA RECEBER</span>
+              </div>
+
+              <div className="checkoutAddressList">
+                {enderecos.map((endereco) => {
+                  const selecionado =
+                    enderecoSelecionadoId === endereco.id;
+
+                  return (
+                    <button
+                      key={endereco.id}
+                      type="button"
+                      className={`checkoutAddressCard ${
+                        selecionado ? "isSelected" : ""
+                      }`}
+                      onClick={() => preencherEndereco(endereco)}
+                      aria-pressed={selecionado}
+                    >
+                      {/* Indicador visual de seleÃ§Ã£o */}
+                      <span
+                        className="checkoutAddressRadio"
+                        aria-hidden="true"
+                      >
+                        <span />
+                      </span>
+
+                      {/* Dados do endereÃ§o */}
+                      <span className="checkoutAddressContent">
+                        <span className="checkoutAddressTop">
+                          <span className="checkoutAddressName">
+                            {endereco.apelido || "ENDEREÃ‡O DE ENTREGA"}
+                          </span>
+
+                          {endereco.principal && (
+                            <span className="checkoutAddressBadge">
+                              PRINCIPAL
+                            </span>
+                          )}
+                        </span>
+
+                        <strong className="checkoutAddressStreet">
+                          {endereco.logradouro}, {endereco.numero}
+                        </strong>
+
+                        <span className="checkoutAddressDetails">
+                          {endereco.bairro} Â· {endereco.cidade}/
+                          {endereco.estado}
+                        </span>
+
+                        <span className="checkoutAddressCep">
+                          CEP {endereco.cep}
+                        </span>
+                      </span>
+
+                      <span className="checkoutAddressStatus">
+                        {selecionado ? "SELECIONADO" : "SELECIONAR"}
+                      </span>
+                    </button>
+                  );
+                })}
+             
+                </div>
+              </div>
+            )}
+
+            {/* =====================================================
+                FORMULÃRIO DE ENDEREÃ‡O
+                MantÃ©m os campos e funcionalidades existentes.
+                ===================================================== */}
+
+            <div className="checkoutFields">
+              <label className="checkoutField">
+                <span>NOME</span>
+
+                <input
+                  type="text"
+                  name="nome"
+                  placeholder="Nome"
+                  value={usuario?.nome ?? ""}
+                  readOnly
+                  autoComplete="given-name"
+                />
+              </label>
+
+              <label className="checkoutField">
+                <span>SOBRENOME</span>
+                <input
+                  type="text"
+                  name="sobrenome"
+                  placeholder="Sobrenome"
+                  value={usuario?.sobrenome ?? ""}
+                  readOnly
+                  autoComplete="family-name"
+                />
+              </label>
+
+              {/* CEP */}
+
+              <label className="checkoutField checkoutFieldFull">
+                <span>CEP</span>
+                <input
+                  type="text"
+                  name="cep"
+                  placeholder="00000-000"
+                  autoComplete="postal-code"
+                  inputMode="numeric"
+                  maxLength={9}
+                  value={dadosEntrega.cep}
+                  onChange={(event) =>
+                    alterarCEP(event.target.value)
+                  }
+                />
+              </label>
+
+              {consultandoCep && (
+                <p role="status">
+                  CONSULTANDO CEP...
+                </p>
+              )}
+
+              {mensagemCep && (
+                <p role="status">
+                  {mensagemCep}
+                </p>
+              )}
+
+              {/* LOGRADOURO */}
+
+              <label className="checkoutField checkoutFieldFull">
+                <span>ENDEREÃ‡O</span>
+                <input
+                  type="text"
+                  name="endereco"
+                  placeholder="Rua / Avenida"
+                  autoComplete="address-line1"
+                  maxLength={200}
+                  value={dadosEntrega.endereco}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "endereco",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* NÃšMERO */}
+
+              <label className="checkoutField">
+                <span>NÃšMERO</span>
+                <input
+                  type="text"
+                  name="numero"
+                  placeholder="NÃºmero"
+                  maxLength={20}
+                  value={dadosEntrega.numero}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "numero",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* COMPLEMENTO */}
+
+              <label className="checkoutField">
+                <span>COMPLEMENTO</span>
+                <input
+                  type="text"
+                  name="complemento"
+                  placeholder="Apto, bloco..."
+                  autoComplete="address-line2"
+                  maxLength={150}
+                  value={dadosEntrega.complemento}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "complemento",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* BAIRRO */}
+
+              <label className="checkoutField checkoutFieldFull">
+                <span>BAIRRO</span>
+                <input
+                  type="text"
+                  name="bairro"
+                  placeholder="Bairro"
+                  maxLength={100}
+                  value={dadosEntrega.bairro}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "bairro",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* CIDADE */}
+
+              <label className="checkoutField">
+                <span>CIDADE</span>
+                <input
+                  type="text"
+                  name="cidade"
+                  placeholder="Cidade"
+                  autoComplete="address-level2"
+                  maxLength={100}
+                  value={dadosEntrega.cidade}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "cidade",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              {/* ESTADO */}
+
+              <label className="checkoutField">
+                <span>ESTADO</span>
+                <input
+                  type="text"
+                  name="estado"
+                  placeholder="SP"
+                  autoComplete="address-level1"
+                  maxLength={2}
+                  value={dadosEntrega.estado}
+                  onChange={(event) =>
+                    alterarCampo(
+                      "estado",
+                      event.target.value.toUpperCase()
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            {mensagemEndereco && (
+              <p role="status">
+                {mensagemEndereco}
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="checkoutContinue"
+              onClick={() => void salvarEndereco()}
+              disabled={
+                salvandoEndereco ||
+                carregandoUsuario ||
+                carregandoEnderecos ||
+                !usuario
+              }
+            >
+              {salvandoEndereco
+                ? "SALVANDO ENDEREÃ‡O..."
+                : "SALVAR ENDEREÃ‡O"}
+            </button>
+          </div>
+        </section>
+
+        {/* ================================================
+            LADO DIREITO â€” RESUMO DO PEDIDO
+            ================================================ */}
+
+        <aside className="checkoutSummary">
+          <div className="checkoutSummaryHeader">
+            <span>SEU PEDIDO</span>
+            <span>{quantidadeItens} ITENS</span>
+          </div>
+
+          {items.length === 0 ? (
+            <div className="checkoutEmpty">
+              <p>SUA SACOLA ESTÃ VAZIA.</p>
+
+              <Link href="/">
+                VOLTAR PARA A LOJA â†’
+              </Link>
+            </div>
+          ) : (
+            <>
+              {/* PRODUTOS */}
+
+              <div className="checkoutItems">
+                {items.map((item) => (
+                  <div
+                    className="checkoutItem"
+                    key={item.id}
+                  >
+                    <div className="checkoutItemImage">
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                      />
+                      <span>{item.quantity}</span>
+                    </div>
+
+                    <div className="checkoutItemInfo">
+                      <div>
+                        <h3>{item.name}</h3>
+
+                        <p>
+                          {item.color} / {item.size}
+                        </p>
+                      </div>
+
+                      <strong>
+                        {formatarMoeda(
+                          item.price * item.quantity
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* =========================================
+                  CÃLCULO DE FRETE
+                  ========================================= */}
+
+              <div
+                style={{
+                  padding: "18px 0",
+                  borderTop: "1px solid #444",
+                  borderBottom: "1px solid #444",
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  ENTREGA â€” CEP{" "}
+                  {dadosEntrega.cep ||
+                    "NÃƒO INFORMADO"}
+                </p>
+
+                <button
+                  type="button"
+                  className="checkoutContinue"
+                  onClick={() =>
+                    void calcularFrete()
+                  }
+                  disabled={
+                    cotandoFrete ||
+                    carregandoUsuario
+                  }
+                >
+                  {cotandoFrete
+                    ? "CALCULANDO FRETE..."
+                    : "CALCULAR FRETE"}
+                </button>
+
+                {erroFrete && (
+                  <p
+                    role="alert"
+                    style={{
+                      color: "#fca5a5",
+                      marginTop: 12,
+                      fontSize: 13,
+                    }}
+                  >
+                    {erroFrete}
+                  </p>
+                )}
+
+                {/* OPÃ‡Ã•ES RETORNADAS PELA API */}
+
+                {opcoesFrete.length > 0 && (
+                  <fieldset
+                    style={{
+                      border: 0,
+                      padding: 0,
+                      margin: "16px 0 0",
+                    }}
+                  >
+                    <legend
+                      style={{
+                        fontSize: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      ESCOLHA A ENTREGA
+                    </legend>
+
+                    {opcoesFrete.map((opcao) => (
+                      <label
+                        key={opcao.id}
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                          padding: "10px 0",
+                          cursor: "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="frete"
+                          checked={
+                            freteSelecionadoId ===
+                            opcao.id
+                          }
+                          onChange={() => {
+                            setFreteSelecionadoId(
+                              opcao.id
+                            );
+                            setMensagemPagamento("");
+                          }}
+                        />
+
+                        <span style={{ flex: 1 }}>
+                          {opcao.transportadora}
+                          {" â€” "}
+                          {opcao.nome}
+
+                          {opcao.prazoDias !== null
+                            ? ` Â· ${opcao.prazoDias} dias`
+                            : ""}
+                        </span>
+
+                        <strong>
+                          {formatarMoeda(
+                            opcao.preco
+                          )}
+                        </strong>
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+              </div>
+
+              {/* VALORES */}
+
+              <div className="checkoutTotals">
+                <div>
+                  <span>SUBTOTAL</span>
+                  <strong>
+                    {formatarMoeda(subtotal)}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>FRETE</span>
+
+                  <strong>
+                    {freteSelecionado
+                      ? formatarMoeda(
+                          freteSelecionado.preco
+                        )
+                      : "CALCULAR FRETE"}
+                  </strong>
+                </div>
+
+                <div className="checkoutTotal">
+                  <span>TOTAL</span>
+
+                  <strong>
+                    {formatarMoeda(total)}
+                  </strong>
+                </div>
+              </div>
+
+              {/* PRÃ“XIMA ETAPA */}
+
+              <button
+                type="button"
+                className="checkoutContinue"
+                onClick={
+                  continuarParaPagamento
+                }
+              >
+                <span>
+                  CONTINUAR PARA PAGAMENTO
+                </span>
+
+                <span>â†’</span>
+              </button>
+
+              {mensagemPagamento && (
+                <p
+                  role="status"
+                  style={{
+                    marginTop: 14,
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {mensagemPagamento}
+                </p>
+              )}
+            </>
+          )}
+        </aside>
+      </div>
+    </main>
+  );
+}
+
+========== src/services/pedidoService.ts ==========
+
+/* =========================================================
+   PEDIDO SERVICE - PÃDUA CULTURE
+   =========================================================
+   ResponsÃ¡vel pelas regras de negÃ³cio dos pedidos.
+
+   Funcionalidades:
+   - Validar o endereÃ§o selecionado.
+   - Validar produtos e quantidades.
+   - Conferir disponibilidade de estoque.
+   - Validar a modalidade de frete.
+   - Calcular os valores oficiais do pedido.
+   - Encaminhar os dados para o Repository.
+
+   IMPORTANTE:
+   Os valores enviados pelo navegador nunca sÃ£o
+   considerados preÃ§os oficiais.
+   ========================================================= */
+
+import {
+  montarVolumesFrete,
+  EmbalagemFreteError,
+  type UnidadeEmbalagem,
+} from "./embalagemFreteService";
+
+import { cotarFreteMelhorEnvio } from "./melhorEnvioService";
+
+import { Prisma } from "@prisma/client";
+
+import {
+  buscarEnderecoDoCliente,
+  buscarVariantesDoPedido,
+  buscarPedidoPorChaveIdempotencia,
+  registrarPedido,
+} from "../repositories/pedidoRepository";
+
+// FunÃ§Ã£o nativa do Node.js para gerar o SHA-256.
+import { createHash } from "node:crypto";
+
+
+
+/* =========================================================
+   TIPOS DE ENTRADA
+   ========================================================= */
+
+export type ItemNovoPedido = {
+  variantId: number;
+  quantity: number;
+};
+
+export type DadosNovoPedido = {
+  enderecoId: number;
+  freteId: number;
+  itens: ItemNovoPedido[];
+};
+
+/* =========================================================
+   DADOS DE FINALIZAÃ‡ÃƒO DO CHECKOUT
+   =========================================================
+   A chave identifica uma tentativa de compra.
+
+   Ela deve permanecer igual quando o cliente
+   repetir a mesma tentativa de checkout.
+   ========================================================= */
+
+export type DadosCheckoutPedido = DadosNovoPedido & {
+  chaveIdempotencia: string;
+};
+
+/* =========================================================
+   ERRO DE REGRA DE NEGÃ“CIO
+   ========================================================= */
+
+export class PedidoServiceError extends Error {
+  constructor(
+    mensagem: string,
+    public readonly status: number = 400
+  ) {
+    super(mensagem);
+    this.name = "PedidoServiceError";
+  }
+}
+
+/* =========================================================
+   VALIDAR INTEIRO POSITIVO
+   ========================================================= */
+
+function inteiroPositivo(valor: unknown): valor is number {
+  return (
+    typeof valor === "number" &&
+    Number.isSafeInteger(valor) &&
+    valor > 0
+  );
+}
+
+/* =========================================================
+   VALIDAR CHAVE DE IDEMPOTÃŠNCIA
+   =========================================================
+   Aceita somente UUIDs no formato convencional.
+
+   A chave nÃ£o pode ser criada novamente pelo servidor
+   a cada repetiÃ§Ã£o da mesma tentativa de checkout.
+   ========================================================= */
+
+export function validarChaveIdempotencia(
+  valor: unknown
+): string {
+  if (
+    typeof valor !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(valor)
+  ) {
+    throw new PedidoServiceError(
+      "Chave de idempotÃªncia invÃ¡lida.",
+      400
+    );
+  }
+
+  return valor.toLowerCase();
+}
+
+/* =========================================================
+   VALIDAR DADOS DO NOVO PEDIDO
+   ========================================================= */
+
+export function validarDadosNovoPedido(
+  entrada: unknown
+): DadosNovoPedido {
+  if (
+    !entrada ||
+    typeof entrada !== "object" ||
+    Array.isArray(entrada)
+  ) {
+    throw new PedidoServiceError(
+      "Dados do pedido invÃ¡lidos."
+    );
+  }
+
+  const dados = entrada as Record<string, unknown>;
+
+  /* =====================================================
+     1. VALIDAR ENDEREÃ‡O
+     ===================================================== */
+
+  if (!inteiroPositivo(dados.enderecoId)) {
+    throw new PedidoServiceError(
+      "Selecione um endereÃ§o de entrega vÃ¡lido."
+    );
+  }
+
+  /* =====================================================
+     2. VALIDAR FRETE
+     =====================================================
+     O identificador serÃ¡ conferido novamente com
+     uma cotaÃ§Ã£o oficial realizada no servidor.
+     ===================================================== */
+
+  if (!inteiroPositivo(dados.freteId)) {
+    throw new PedidoServiceError(
+      "Selecione uma modalidade de frete vÃ¡lida."
+    );
+  }
+
+  /* =====================================================
+     3. VALIDAR ITENS
+     ===================================================== */
+
+  if (
+    !Array.isArray(dados.itens) ||
+    dados.itens.length === 0 ||
+    dados.itens.length > 30
+  ) {
+    throw new PedidoServiceError(
+      "O pedido deve conter entre 1 e 30 itens."
+    );
+  }
+
+  // Agrupa variantes repetidas na mesma compra.
+  const itensAgrupados = new Map<number, number>();
+
+  for (const item of dados.itens) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      Array.isArray(item)
+    ) {
+      throw new PedidoServiceError(
+        "Um dos itens do pedido Ã© invÃ¡lido."
+      );
+    }
+
+    const atual = item as Record<string, unknown>;
+
+    if (
+      !inteiroPositivo(atual.variantId) ||
+      !inteiroPositivo(atual.quantity) ||
+      atual.quantity > 100
+    ) {
+      throw new PedidoServiceError(
+        "Produto ou quantidade invÃ¡lida."
+      );
+    }
+
+    const quantidadeAnterior =
+      itensAgrupados.get(atual.variantId) ?? 0;
+
+    const quantidadeTotal =
+      quantidadeAnterior + atual.quantity;
+
+    if (quantidadeTotal > 100) {
+      throw new PedidoServiceError(
+        "Quantidade mÃ¡xima excedida para um produto."
+      );
+    }
+
+    itensAgrupados.set(
+      atual.variantId,
+      quantidadeTotal
+    );
+  }
+
+  /* =====================================================
+     4. RETORNAR DADOS NORMALIZADOS
+     ===================================================== */
+
+  return {
+    enderecoId: dados.enderecoId,
+    freteId: dados.freteId,
+    itens: Array.from(
+      itensAgrupados,
+      ([variantId, quantity]) => ({
+        variantId,
+        quantity,
+      })
+    ),
+  };
+}
+
+/* =========================================================
+   PREPARAR PEDIDO - PÃDUA CULTURE
+   =========================================================
+   Valida o checkout e consulta os dados oficiais
+   armazenados no banco.
+
+   NÃ£o cria pedidos, pagamentos ou movimentaÃ§Ãµes
+   de estoque nesta etapa.
+   ========================================================= */
+
+export async function prepararNovoPedido(
+  usuarioId: number,
+  entrada: unknown
+) {
+  /* =====================================================
+     1. VALIDAR CLIENTE E DADOS RECEBIDOS
+     ===================================================== */
+
+  if (
+    !Number.isSafeInteger(usuarioId) ||
+    usuarioId <= 0
+  ) {
+    throw new PedidoServiceError(
+      "UsuÃ¡rio invÃ¡lido.",
+      401
+    );
+  }
+
+  const dados = validarDadosNovoPedido(entrada);
+
+  /* =====================================================
+     2. VERIFICAR SE O ENDEREÃ‡O PERTENCE AO CLIENTE
+     ===================================================== */
+
+  const endereco = await buscarEnderecoDoCliente(
+    usuarioId,
+    dados.enderecoId
+  );
+
+  if (!endereco) {
+    throw new PedidoServiceError(
+      "EndereÃ§o nÃ£o encontrado para este cliente.",
+      404
+    );
+  }
+
+  /* =====================================================
+     3. CONSULTAR PRODUTOS ATIVOS
+     ===================================================== */
+
+  const variantes = await buscarVariantesDoPedido(
+    dados.itens.map((item) => item.variantId)
+  );
+
+  if (variantes.length !== dados.itens.length) {
+    throw new PedidoServiceError(
+      "Um ou mais produtos nÃ£o estÃ£o disponÃ­veis.",
+      409
+    );
+  }
+
+  // Facilita a localizaÃ§Ã£o de cada variante pelo ID.
+  const variantesPorId = new Map(
+    variantes.map((variante) => [
+      variante.id,
+      variante,
+    ])
+  );
+
+  /* =====================================================
+     4. VERIFICAR ESTOQUE E CALCULAR SUBTOTAL
+     =====================================================
+     Prisma.Decimal evita imprecisÃµes nos cÃ¡lculos
+     monetÃ¡rios.
+     ===================================================== */
+
+  let subtotal = new Prisma.Decimal(0);
+
+  const itens = dados.itens.map((item) => {
+    const variante = variantesPorId.get(item.variantId);
+
+    if (!variante) {
+      throw new PedidoServiceError(
+        "Produto nÃ£o encontrado.",
+        409
+      );
+    }
+
+    // Confere o estoque disponÃ­vel no momento da consulta.
+    if (variante.quantidade < item.quantity) {
+      throw new PedidoServiceError(
+        `Estoque insuficiente para ${variante.produto.nome} (${variante.cor}, ${variante.tamanho}).`,
+        409
+      );
+    }
+
+    // Aplica o preÃ§o promocional quando estiver definido.
+    const preco =
+      variante.produto.precoPromocional ??
+      variante.produto.preco;
+
+    if (preco.lessThan(0)) {
+      throw new PedidoServiceError(
+        "PreÃ§o invÃ¡lido para um dos produtos.",
+        409
+      );
+    }
+
+    const subtotalItem = preco.mul(item.quantity);
+
+    subtotal = subtotal.plus(subtotalItem);
+
+    // Preserva os dados do produto para o pedido.
+    return {
+      varianteId: variante.id,
+      nomeProduto: variante.produto.nome,
+      tamanho: variante.tamanho,
+      cor: variante.cor,
+      quantidade: item.quantity,
+      precoUnitario: preco,
+      subtotal: subtotalItem,
+      pesoGramas: variante.produto.pesoGramas,
+      categoriaSlug: variante.produto.categoria.slug,
+    };
+  });
+
+  /* =====================================================
+     5. RETORNAR DADOS PREPARADOS
+     =====================================================
+     O frete ainda serÃ¡ validado na prÃ³xima funÃ§Ã£o.
+     ===================================================== */
+
+  return {
+    usuarioId,
+    endereco,
+    freteId: dados.freteId,
+    itens,
+    subtotal,
+  };
+}
+
+/* =========================================================
+   VALIDAR FRETE DO PEDIDO - PÃDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   - Validar cliente, endereÃ§o e produtos.
+   - Montar as embalagens.
+   - Consultar novamente o Melhor Envio.
+   - Conferir a modalidade escolhida.
+   - Calcular o valor total.
+
+   NÃ£o cria pedidos, cobranÃ§as ou etiquetas.
+   ========================================================= */
+
+export async function prepararPedidoComFrete(
+  usuarioId: number,
+  entrada: unknown
+) {
+  /* =====================================================
+     1. VALIDAR CLIENTE, ENDEREÃ‡O E PRODUTOS
+     ===================================================== */
+
+  const pedido = await prepararNovoPedido(
+    usuarioId,
+    entrada
+  );
+
+  /* =====================================================
+     2. MONTAR UNIDADES PARA EMBALAGEM
+     ===================================================== */
+
+  const unidades: UnidadeEmbalagem[] = [];
+
+  for (const item of pedido.itens) {
+    // Cada produto precisa possuir peso vÃ¡lido.
+    if (
+      item.pesoGramas === null ||
+      !Number.isSafeInteger(item.pesoGramas) ||
+      item.pesoGramas <= 0
+    ) {
+      throw new PedidoServiceError(
+        `O produto ${item.nomeProduto} nÃ£o possui peso vÃ¡lido.`,
+        422
+      );
+    }
+
+    // Adiciona uma unidade para cada peÃ§a comprada.
+    for (let i = 0; i < item.quantidade; i++) {
+      unidades.push({
+        pesoGramas: item.pesoGramas,
+        valor: Number(item.precoUnitario),
+        categoria: item.categoriaSlug,
+      });
+    }
+  }
+
+  /* =====================================================
+     3. CALCULAR EMBALAGENS
+     ===================================================== */
+
+  let resultadoEmbalagem: ReturnType<
+    typeof montarVolumesFrete
+  >;
+
+  try {
+    resultadoEmbalagem = montarVolumesFrete(unidades);
+  } catch (error) {
+    if (error instanceof EmbalagemFreteError) {
+      throw new PedidoServiceError(
+        error.message,
+        422
+      );
+    }
+
+    throw error;
+  }
+
+  /* =====================================================
+     4. CONSULTAR NOVAMENTE O MELHOR ENVIO
+     =====================================================
+     O CEP vem do endereÃ§o cadastrado no banco.
+
+     O preÃ§o do frete nunca Ã© aceito diretamente
+     do navegador.
+     ===================================================== */
+
+  const opcoes = await cotarFreteMelhorEnvio({
+    cepDestino: pedido.endereco.cep,
+    volumes: resultadoEmbalagem.volumes,
+    valorSegurado: resultadoEmbalagem.valorSegurado,
+  });
+
+  /* =====================================================
+     5. CONFERIR A MODALIDADE SELECIONADA
+     ===================================================== */
+
+  const freteSelecionado = opcoes.find(
+    (opcao) => opcao.id === pedido.freteId
+  );
+
+  if (!freteSelecionado) {
+    throw new PedidoServiceError(
+      "A modalidade de frete selecionada nÃ£o estÃ¡ mais disponÃ­vel. FaÃ§a uma nova cotaÃ§Ã£o.",
+      409
+    );
+  }
+
+  /* =====================================================
+     6. CALCULAR VALOR TOTAL DO PEDIDO
+     ===================================================== */
+
+  const valorFrete = new Prisma.Decimal(
+    freteSelecionado.preco.toFixed(2)
+  );
+
+  const valorTotal = pedido.subtotal.plus(valorFrete);
+
+  /* =====================================================
+     7. RETORNAR PEDIDO PREPARADO
+     =====================================================
+     Os dados estÃ£o prontos para o Repository,
+     mas ainda nÃ£o foram gravados.
+     ===================================================== */
+
+  return {
+    ...pedido,
+    frete: {
+      id: freteSelecionado.id,
+      nome: freteSelecionado.nome,
+      transportadora: freteSelecionado.transportadora,
+      prazoDias: freteSelecionado.prazoDias,
+    },
+    valorFrete,
+    valorTotal,
+  };
+} // CORREÃ‡ÃƒO: encerra prepararPedidoComFrete()
+
+/* =========================================================
+   CRIAR PEDIDO - PÃDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   1. Validar cliente, endereÃ§o e produtos.
+   2. Consultar novamente o Melhor Envio.
+   3. Calcular os valores oficiais.
+   4. Registrar o pedido no banco de dados.
+
+   IMPORTANTE:
+   - NÃ£o processa pagamentos.
+   - NÃ£o reserva nem desconta estoque.
+   - NÃ£o gera etiquetas de envio.
+   - NÃ£o impede pedidos duplicados.
+
+   Esta funÃ§Ã£o nÃ£o deve ser exposta publicamente
+   antes da implementaÃ§Ã£o dessas proteÃ§Ãµes.
+   ========================================================= */
+
+
+
+/* =========================================================
+   CRIAR PEDIDO - PÃDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   1. Validar os dados do cliente e dos produtos.
+   2. Conferir o frete com o Melhor Envio.
+   3. Preparar a identificaÃ§Ã£o do pedido.
+   4. Definir o prazo da reserva de estoque.
+   5. Enviar os dados ao Repository.
+
+   IMPORTANTE:
+   A idempotÃªncia definitiva e a liberaÃ§Ã£o automÃ¡tica
+   do estoque serÃ£o implementadas nas prÃ³ximas etapas.
+   ========================================================= */
+
+export async function criarNovoPedido(
+  usuarioId: number,
+  entrada: unknown
+) {
+  /* =====================================================
+     1. PREPARAR E VALIDAR O PEDIDO
+     ===================================================== */
+
+/* =====================================================
+   1. VALIDAR A SOLICITAÃ‡ÃƒO DO CHECKOUT
+   ===================================================== */
+
+// Confere os dados enviados pelo cliente.
+const dadosValidados = validarDadosNovoPedido(entrada);
+
+/* =====================================================
+   GERAR A IDENTIFICAÃ‡ÃƒO DOS DADOS DO CHECKOUT
+   =====================================================
+   O hash considera:
+   - Cliente autenticado.
+   - EndereÃ§o selecionado.
+   - Modalidade de frete.
+   - Produtos e quantidades.
+
+   Ordenamos os produtos para que a mesma compra
+   gere o mesmo hash, independentemente da ordem
+   em que os itens foram enviados.
+   ===================================================== */
+
+// Organiza os produtos em uma ordem consistente.
+const itensOrdenados = [...dadosValidados.itens].sort(
+  (a, b) => a.variantId - b.variantId
+);
+
+// Monta a representaÃ§Ã£o normalizada da compra.
+const dadosParaHash = {
+  usuarioId,
+  enderecoId: dadosValidados.enderecoId,
+  freteId: dadosValidados.freteId,
+  itens: itensOrdenados.map((item) => ({
+    variantId: item.variantId,
+    quantity: item.quantity,
+  })),
+};
+
+// Calcula o SHA-256 dos dados da tentativa de checkout.
+const hashCheckout = createHash("sha256")
+  .update(JSON.stringify(dadosParaHash))
+  .digest("hex");
+
+// ObtÃ©m a chave estÃ¡vel da tentativa de compra.
+const chaveIdempotencia = validarChaveIdempotencia(
+  (entrada as Record<string, unknown>).chaveIdempotencia
+);
+
+/* =====================================================
+   2. CONSULTAR TENTATIVA ANTERIOR
+   ===================================================== */
+
+const pedidoExistente =
+  await buscarPedidoPorChaveIdempotencia(chaveIdempotencia);
+
+/* =====================================================
+   VERIFICAR SE A TENTATIVA JÃ FOI REGISTRADA
+   ===================================================== */
+
+if (pedidoExistente) {
+  // Impede que um cliente acesse pedidos de outro usuÃ¡rio.
+  if (pedidoExistente.usuarioId !== usuarioId) {
+    throw new PedidoServiceError(
+      "Chave de idempotÃªncia jÃ¡ utilizada.",
+      409
+    );
+  }
+
+  // Impede reutilizar a mesma chave com outra compra.
+  // Pedidos antigos sem hash nÃ£o podem ser comparados.
+  if (
+    !pedidoExistente.hashCheckout ||
+    pedidoExistente.hashCheckout !== hashCheckout
+  ) {
+    throw new PedidoServiceError(
+      "Esta chave de idempotÃªncia jÃ¡ foi utilizada com dados diferentes.",
+      409
+    );
+  }
+
+  // Retorna a compra original sem reservar estoque novamente.
+  // O status e o prazo da reserva continuam sendo os originais.
+  return {
+    id: pedidoExistente.id,
+    status: pedidoExistente.status,
+    valorTotal: pedidoExistente.valorTotal,
+    criadoEm: pedidoExistente.criadoEm,
+  };
+}
+
+/* =====================================================
+   3. PREPARAR UM NOVO PEDIDO
+   ===================================================== */
+
+// Somente pedidos inÃ©ditos chegam Ã  cotaÃ§Ã£o de frete.
+const pedidoPreparado = await prepararPedidoComFrete(
+  usuarioId,
+  dadosValidados
+);
+
+  /* =====================================================
+     2. GERAR A IDENTIFICAÃ‡ÃƒO DA TENTATIVA
+     =====================================================
+     Por enquanto, geramos um UUID no servidor.
+
+     Esta implementaÃ§Ã£o Ã© temporÃ¡ria:
+     a idempotÃªncia real exigirÃ¡ uma chave estÃ¡vel
+     para a mesma tentativa de checkout.
+     ===================================================== */
+
+
+
+  /* =====================================================
+     3. DEFINIR A EXPIRAÃ‡ÃƒO DA RESERVA
+     =====================================================
+     A reserva terÃ¡ um prazo inicial de 15 minutos.
+
+     Isso apenas registra a data no banco.
+     NÃ£o existe liberaÃ§Ã£o automÃ¡tica nesta etapa.
+     ===================================================== */
+
+  const reservaExpiraEm = new Date(
+    Date.now() + 15 * 60 * 1000
+  );
+
+  /* =====================================================
+     4. REGISTRAR O PEDIDO NO BANCO
+     =====================================================
+     O Repository serÃ¡ responsÃ¡vel por:
+     - Criar o pedido.
+     - Reservar o estoque.
+     - Registrar os itens.
+     - Salvar o endereÃ§o.
+     - Registrar a entrega.
+     - Criar o histÃ³rico.
+
+     Todas essas operaÃ§Ãµes devem ocorrer dentro
+     da mesma transaÃ§Ã£o Prisma.
+     ===================================================== */
+
+  // Tenta registrar o pedido e reservar o estoque.
+  // Se outra requisiÃ§Ã£o jÃ¡ utilizou a mesma chave,
+  // o erro serÃ¡ tratado sem criar uma segunda compra.
+  try {
+
+    const pedidoRegistrado = await registrarPedido({
+      // IdentificaÃ§Ã£o do cliente.
+      usuarioId: pedidoPreparado.usuarioId,
+
+      // IdentificaÃ§Ã£o da tentativa de checkout.
+      chaveIdempotencia,
+
+      // Identifica os dados originais da compra.
+      // SerÃ¡ comparado nas tentativas repetidas.
+      hashCheckout,
+
+      // Prazo de validade da reserva.
+      reservaExpiraEm,
+
+      // Valores calculados pelo servidor.
+      subtotal: pedidoPreparado.subtotal,
+      valorFrete: pedidoPreparado.valorFrete,
+      valorTotal: pedidoPreparado.valorTotal,
+
+      /* =================================================
+        ENDEREÃ‡O DE ENTREGA
+        ================================================= */
+
+      endereco: {
+        destinatario: pedidoPreparado.endereco.destinatario,
+        cep: pedidoPreparado.endereco.cep,
+        logradouro: pedidoPreparado.endereco.logradouro,
+        numero: pedidoPreparado.endereco.numero,
+        complemento: pedidoPreparado.endereco.complemento,
+        bairro: pedidoPreparado.endereco.bairro,
+        cidade: pedidoPreparado.endereco.cidade,
+        estado: pedidoPreparado.endereco.estado,
+      },
+
+      /* =================================================
+        INFORMAÃ‡Ã•ES DO FRETE
+        ================================================= */
+
+      frete: {
+        nome: pedidoPreparado.frete.nome,
+        transportadora: pedidoPreparado.frete.transportadora,
+      },
+
+      /* =================================================
+        PRODUTOS DO PEDIDO
+        ================================================= */
+
+      itens: pedidoPreparado.itens.map((item) => ({
+        varianteId: item.varianteId,
+        nomeProduto: item.nomeProduto,
+        tamanho: item.tamanho,
+        cor: item.cor,
+        quantidade: item.quantidade,
+        precoUnitario: item.precoUnitario,
+        subtotal: item.subtotal,
+      })),
+    });
+
+  /* =====================================================
+     5. RETORNAR O PEDIDO REGISTRADO
+     ===================================================== */
+
+  // Primeira tentativa concluÃ­da: retorna o pedido criado.
+  return pedidoRegistrado;
+
+} catch (erro: unknown) {
+  /*
+   * P2002: violaÃ§Ã£o de restriÃ§Ã£o UNIQUE do Prisma.
+   *
+   * Pode ocorrer quando duas requisiÃ§Ãµes tentam
+   * registrar a mesma chave simultaneamente.
+   */
+  if (
+    erro instanceof Prisma.PrismaClientKnownRequestError &&
+    erro.code === "P2002"
+  ) {
+    // Consulta novamente o pedido que venceu a concorrÃªncia.
+    const pedidoExistente =
+      await buscarPedidoPorChaveIdempotencia(chaveIdempotencia);
+
+    // Se nÃ£o existir pedido com essa chave, o conflito
+    // pode ter ocorrido em outra restriÃ§Ã£o UNIQUE.
+    if (!pedidoExistente) {
+      throw erro;
+    }
+
+    // Impede acesso a pedidos de outro cliente.
+    if (pedidoExistente.usuarioId !== usuarioId) {
+      throw new PedidoServiceError(
+        "Chave de idempotÃªncia jÃ¡ utilizada.",
+        409
+      );
+    }
+
+    // A chave nÃ£o pode representar duas compras diferentes.
+    if (
+      !pedidoExistente.hashCheckout ||
+      pedidoExistente.hashCheckout !== hashCheckout
+    ) {
+      throw new PedidoServiceError(
+        "Esta chave jÃ¡ foi utilizada com dados diferentes.",
+        409
+      );
+    }
+
+    // Retorna o pedido original sem reservar estoque novamente.
+    return {
+      id: pedidoExistente.id,
+      status: pedidoExistente.status,
+      valorTotal: pedidoExistente.valorTotal,
+      criadoEm: pedidoExistente.criadoEm,
+    };
+  }
+
+  // Erros de estoque, banco ou outros problemas
+  // nÃ£o devem ser tratados como pedidos duplicados.
+  throw erro;
+}
+}
+
+
+
+========== src/controllers/pedidoController.ts ==========
+
+/* =========================================================
+   PEDIDO CONTROLLER - PÃDUA CULTURE
+   =========================================================
+   Responsabilidades:
+   - Validar a autenticaÃ§Ã£o do cliente.
+   - Verificar se a sessÃ£o continua ativa.
+   - Validar a origem da requisiÃ§Ã£o.
+   - Preparar a integraÃ§Ã£o com o PedidoService.
+
+   Fluxo:
+   Route -> Controller -> Service -> Repository -> Prisma
+   ========================================================= */
+
+
+// ServiÃ§o responsÃ¡vel pela criaÃ§Ã£o do pedido.
+import {
+  criarNovoPedido,
+  PedidoServiceError,
+} from "../services/pedidoService";
+
+// Erro de estoque insuficiente durante a reserva.
+import { ReservaEstoqueError } from "../repositories/pedidoRepository";   
+
+import { NextRequest, NextResponse } from "next/server";
+
+import { prisma } from "../../lib/prisma";
+import { validarAuthToken } from "../utils/authToken";
+
+/* =========================================================
+   CONTROLLER - CRIAR PEDIDO
+   ========================================================= */
+
+export async function criarPedidoController(
+  request: NextRequest
+) {
+  try {
+    /* =====================================================
+       1. IDENTIFICAR O COOKIE DE AUTENTICAÃ‡ÃƒO
+       ===================================================== */
+
+    const token = request.cookies.get("padua_session")?.value;
+
+    if (!token) {
+      return NextResponse.json(
+        { erro: "UsuÃ¡rio nÃ£o autenticado." },
+        { status: 401 }
+      );
+    }
+
+    /* =====================================================
+       2. VALIDAR O JWT
+       ===================================================== */
+
+    let usuarioId: number;
+    let versaoSessao: number;
+
+    try {
+      const payload = await validarAuthToken(token);
+
+      usuarioId = Number(payload.usuarioId);
+      versaoSessao = Number(payload.versaoSessao);
+    } catch {
+      return NextResponse.json(
+        { erro: "SessÃ£o invÃ¡lida ou expirada." },
+        { status: 401 }
+      );
+    }
+
+    /* =====================================================
+       3. VERIFICAR SE A SESSÃƒO FOI REVOGADA
+       ===================================================== */
+
+    const usuario = await prisma.usuario.findUnique({
+      where: {
+        id: usuarioId,
+      },
+      select: {
+        id: true,
+        versaoSessao: true,
+      },
+    });
+
+    if (
+      !usuario ||
+      usuario.versaoSessao !== versaoSessao
+    ) {
+      return NextResponse.json(
+        { erro: "SessÃ£o revogada. FaÃ§a login novamente." },
+        { status: 401 }
+      );
+    }
+
+    /* =====================================================
+       4. VALIDAR A ORIGEM DA REQUISIÃ‡ÃƒO
+       =====================================================
+       ProteÃ§Ã£o contra requisiÃ§Ãµes externas que tentem
+       utilizar o cookie de autenticaÃ§Ã£o do cliente.
+       ===================================================== */
+
+    const origin = request.headers.get("origin");
+
+    if (!origin) {
+      return NextResponse.json(
+        { erro: "Origem da requisiÃ§Ã£o nÃ£o informada." },
+        { status: 403 }
+      );
+    }
+
+    try {
+      const origem = new URL(origin);
+      const destino = new URL(request.url);
+
+      if (origem.origin !== destino.origin) {
+        return NextResponse.json(
+          { erro: "Origem da requisiÃ§Ã£o nÃ£o autorizada." },
+          { status: 403 }
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { erro: "Origem da requisiÃ§Ã£o invÃ¡lida." },
+        { status: 403 }
+      );
+    }
+
+    /* =====================================================
+       5. VALIDAR O CORPO DA REQUISIÃ‡ÃƒO
+       ===================================================== */
+
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { erro: "JSON invÃ¡lido." },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
+      return NextResponse.json(
+        { erro: "Dados do pedido invÃ¡lidos." },
+        { status: 400 }
+      );
+    }
+
+    /* =====================================================
+       6. PREPARAR A CRIAÃ‡ÃƒO DO PEDIDO
+       =====================================================
+       O Service serÃ¡ implementado na prÃ³xima etapa.
+
+       Ainda nÃ£o criamos pedidos nem movimentamos estoque.
+       ===================================================== */
+
+      // Cria o pedido com os dados validados pelo Service.
+      // O Service calcula os preÃ§os, valida o frete e
+      // registra a reserva de estoque no MySQL.
+      const pedido = await criarNovoPedido(usuarioId, body);
+
+      return NextResponse.json(
+        {
+          mensagem: "Pedido registrado com sucesso.",
+          pedido: {
+            id: pedido.id,
+            status: pedido.status,
+            valorTotal: pedido.valorTotal.toString(),
+            criadoEm: pedido.criadoEm,
+          },
+        },
+        {
+          status: 201,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+
+  } catch (error) {
+    // Erros esperados das regras de negÃ³cio.
+    if (error instanceof PedidoServiceError) {
+      return NextResponse.json(
+        { erro: error.message },
+        { status: error.status }
+      );
+    }
+
+    // Falta de estoque identificada na transaÃ§Ã£o.
+    if (error instanceof ReservaEstoqueError) {
+      return NextResponse.json(
+        { erro: error.message },
+        { status: 409 }
+      );
+    }
+    console.error(
+      "[PEDIDO CONTROLLER] Erro ao processar pedido:",
+      error
+    );
+
+    return NextResponse.json(
+      { erro: "NÃ£o foi possÃ­vel processar o pedido." },
+      { status: 500 }
+    );
+  }
+}
+

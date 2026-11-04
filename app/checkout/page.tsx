@@ -208,6 +208,15 @@ export default function Checkout() {
   const [mensagemPagamento, setMensagemPagamento] =
     useState("");
 
+    // Indica quando o pedido está sendo enviado ao servidor.
+  const [criandoPedido, setCriandoPedido] = useState(false);
+
+  // Mantém a identificação da tentativa para evitar duplicidade.
+  const tentativaPedidoRef = useRef<{
+    assinatura: string;
+    chave: string;
+  } | null>(null);
+
   const cotacaoController =
     useRef<AbortController | null>(null);
 
@@ -699,20 +708,29 @@ export default function Checkout() {
      Ainda não cria pedido nem cobrança.
      ======================================================= */
 
-  function continuarParaPagamento() {
+/* =========================================================
+   CRIAR PEDIDO — PÁDUA CULTURE
+
+   Valida o checkout e envia os dados para a API.
+   A API recalcula preços, frete e reserva o estoque.
+
+   IMPORTANTE:
+   Esta etapa NÃO inicia uma cobrança.
+   ========================================================= */
+
+  async function continuarParaPagamento() {
+    // Impede envios simultâneos.
+    if (criandoPedido) return;
+
     setMensagemPagamento("");
 
     if (!usuario) {
-      setMensagemPagamento(
-        "Entre na sua conta para continuar."
-      );
+      setMensagemPagamento("Entre na sua conta para continuar.");
       return;
     }
 
     if (items.length === 0) {
-      setMensagemPagamento(
-        "Adicione produtos à sacola."
-      );
+      setMensagemPagamento("Adicione produtos à sacola.");
       return;
     }
 
@@ -724,9 +742,7 @@ export default function Checkout() {
       !dadosEntrega.cidade.trim() ||
       !/^[A-Z]{2}$/.test(dadosEntrega.estado.trim())
     ) {
-      setMensagemPagamento(
-        "Complete o endereço de entrega."
-      );
+      setMensagemPagamento("Complete o endereço de entrega.");
       return;
     }
 
@@ -744,11 +760,79 @@ export default function Checkout() {
       return;
     }
 
-    // Esta etapa será conectada à API de pedidos
-    // e ao provedor de pagamentos posteriormente.
-    setMensagemPagamento(
-      "Endereço e frete validados. A integração de pagamento ainda não está disponível. Nenhum pedido ou cobrança foi criado."
-    );
+    // Envia apenas os identificadores e as quantidades.
+    // Preços exibidos no navegador não são valores oficiais.
+    const itensPedido = items.map((item) => ({
+      variantId: item.variantId,
+      quantity: item.quantity,
+    }));
+
+    const assinatura = JSON.stringify({
+      usuarioId: usuario.id,
+      enderecoId: enderecoSelecionadoId,
+      freteId: freteSelecionado.id,
+      itens: [...itensPedido].sort(
+        (a, b) => Number(a.variantId) - Number(b.variantId)
+      ),
+    });
+
+    // Reutiliza a chave quando o cliente repete a mesma
+    // tentativa de compra, inclusive após falha de rede.
+    if (
+      !tentativaPedidoRef.current ||
+      tentativaPedidoRef.current.assinatura !== assinatura
+    ) {
+      tentativaPedidoRef.current = {
+        assinatura,
+        chave: crypto.randomUUID(),
+      };
+    }
+
+    setCriandoPedido(true);
+
+    try {
+      const resposta = await fetch("/api/pedidos", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          enderecoId: enderecoSelecionadoId,
+          freteId: freteSelecionado.id,
+          itens: itensPedido,
+          chaveIdempotencia: tentativaPedidoRef.current.chave,
+        }),
+      });
+
+      const resultado = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(
+          resultado.erro ??
+            "Não foi possível registrar seu pedido."
+        );
+      }
+
+      // O pedido existe, mas ainda não há pagamento.
+      setMensagemPagamento(
+        `Pedido #${resultado.pedido.id} registrado com sucesso! ` +
+        `Total confirmado: ${formatarMoeda(
+          Number(resultado.pedido.valorTotal)
+        )}. ` +
+        "O pagamento ainda não está disponível. " +
+        "Nenhuma cobrança foi realizada."
+      );
+    } catch (erro) {
+      setMensagemPagamento(
+        erro instanceof Error
+          ? erro.message
+          : "Não foi possível registrar o pedido."
+      );
+    } finally {
+      setCriandoPedido(false);
+    }
   }
 
   /* =======================================================
@@ -1338,15 +1422,21 @@ export default function Checkout() {
 
               {/* PRÓXIMA ETAPA */}
 
+              {/* Botão responsável por registrar o pedido no banco */}
               <button
                 type="button"
                 className="checkoutContinue"
-                onClick={
-                  continuarParaPagamento
-                }
+
+                // Executa a função de criação do pedido
+                onClick={() => void continuarParaPagamento()}
+
+                // Impede vários cliques enquanto o pedido é registrado
+                disabled={criandoPedido}
               >
                 <span>
-                  CONTINUAR PARA PAGAMENTO
+                  {criandoPedido
+                    ? "REGISTRANDO PEDIDO..."
+                    : "REGISTRAR PEDIDO"}
                 </span>
 
                 <span>→</span>
