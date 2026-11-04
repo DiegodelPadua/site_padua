@@ -125,6 +125,10 @@ export type DadosRegistroPedido = {
     // Identifica de forma única a tentativa de compra.
   chaveIdempotencia: string;
 
+  // Identificação SHA-256 dos dados originais do checkout.
+  // Permite detectar reutilização da chave com uma compra diferente.
+  hashCheckout: string;
+
   // Prazo de validade da reserva.
   reservaExpiraEm: Date;
   subtotal: Prisma.Decimal;
@@ -182,25 +186,83 @@ export type DadosRegistroPedido = {
    para evitar acesso a pedidos de outros clientes.
    ========================================================= */
 
+/**
+ * Consulta uma tentativa de checkout pela chave de idempotência.
+ *
+ * A busca é feita pela chave única, independentemente do usuário.
+ * O Service deverá conferir o proprietário antes de retornar
+ * qualquer informação ao cliente.
+ */
+/**
+ * Busca um pedido pela chave única de idempotência.
+ *
+ * Essa consulta permite identificar se uma tentativa de
+ * compra já foi registrada anteriormente.
+ *
+ * O Service deverá:
+ * 1. Conferir se o pedido pertence ao usuário autenticado.
+ * 2. Comparar o hash da solicitação atual com o original.
+ * 3. Retornar o pedido existente quando os dados coincidirem.
+ * 4. Rejeitar a reutilização da chave com dados diferentes.
+ */
 export async function buscarPedidoPorChaveIdempotencia(
-  usuarioId: number,
   chaveIdempotencia: string
 ) {
-  return prisma.pedido.findFirst({
+  return prisma.pedido.findUnique({
+    // A chave possui restrição UNIQUE no banco MySQL.
     where: {
-      usuarioId,
       chaveIdempotencia,
     },
+
     select: {
+      // Identificação do pedido e do cliente.
       id: true,
+      usuarioId: true,
+
+      // Identificação única da tentativa de checkout.
+      chaveIdempotencia: true,
+
+      // Hash SHA-256 dos dados originais da compra.
+      hashCheckout: true,
+
+      // Situação atual e informações do pedido.
       status: true,
       valorTotal: true,
       criadoEm: true,
       reservaExpiraEm: true,
+
+      // Produtos registrados na compra original.
+      itens: {
+        select: {
+          varianteId: true,
+          quantidade: true,
+        },
+      },
+
+      // Endereço preservado no momento da compra.
+      enderecoEntrega: {
+        select: {
+          destinatario: true,
+          cep: true,
+          logradouro: true,
+          numero: true,
+          complemento: true,
+          bairro: true,
+          cidade: true,
+          estado: true,
+        },
+      },
+
+      // Informações da entrega selecionada.
+      entrega: {
+        select: {
+          transportadora: true,
+          modalidadeFrete: true,
+        },
+      },
     },
   });
 }
-
 export async function registrarPedido(
   dados: DadosRegistroPedido
 ) {
@@ -212,7 +274,13 @@ export async function registrarPedido(
     const pedido = await tx.pedido.create({
       data: {
         usuarioId: dados.usuarioId,
+        // Chave única da tentativa de compra.
         chaveIdempotencia: dados.chaveIdempotencia,
+
+        // Hash que identifica os dados da solicitação original.
+        hashCheckout: dados.hashCheckout,
+
+        // Prazo máximo da reserva de estoque.
         reservaExpiraEm: dados.reservaExpiraEm,
         status: StatusPedido.AGUARDANDO_PAGAMENTO,
         subtotal: dados.subtotal,

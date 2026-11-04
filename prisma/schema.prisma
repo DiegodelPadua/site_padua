@@ -153,7 +153,9 @@ model Pedido {
   usuarioId       Int
     // Identifica uma tentativa de compra sem duplicá-la.
   chaveIdempotencia String? @unique @db.VarChar(100)
-
+  // SHA-256 dos dados normalizados da tentativa de checkout.
+  // Impede reutilizar a mesma chave com outra compra.
+  hashCheckout String? @db.VarChar(64)
   // Define até quando o estoque ficará reservado.
   reservaExpiraEm DateTime?
   status          StatusPedido           @default(AGUARDANDO_PAGAMENTO)

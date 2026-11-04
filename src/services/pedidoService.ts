@@ -34,6 +34,11 @@ import {
   registrarPedido,
 } from "../repositories/pedidoRepository";
 
+// Função nativa do Node.js para gerar o SHA-256.
+import { createHash } from "node:crypto";
+
+
+
 /* =========================================================
    TIPOS DE ENTRADA
    ========================================================= */
@@ -551,10 +556,104 @@ export async function criarNovoPedido(
      1. PREPARAR E VALIDAR O PEDIDO
      ===================================================== */
 
-  const pedidoPreparado = await prepararPedidoComFrete(
-    usuarioId,
-    entrada
-  );
+/* =====================================================
+   1. VALIDAR A SOLICITAÇÃO DO CHECKOUT
+   ===================================================== */
+
+// Confere os dados enviados pelo cliente.
+const dadosValidados = validarDadosNovoPedido(entrada);
+
+/* =====================================================
+   GERAR A IDENTIFICAÇÃO DOS DADOS DO CHECKOUT
+   =====================================================
+   O hash considera:
+   - Cliente autenticado.
+   - Endereço selecionado.
+   - Modalidade de frete.
+   - Produtos e quantidades.
+
+   Ordenamos os produtos para que a mesma compra
+   gere o mesmo hash, independentemente da ordem
+   em que os itens foram enviados.
+   ===================================================== */
+
+// Organiza os produtos em uma ordem consistente.
+const itensOrdenados = [...dadosValidados.itens].sort(
+  (a, b) => a.variantId - b.variantId
+);
+
+// Monta a representação normalizada da compra.
+const dadosParaHash = {
+  usuarioId,
+  enderecoId: dadosValidados.enderecoId,
+  freteId: dadosValidados.freteId,
+  itens: itensOrdenados.map((item) => ({
+    variantId: item.variantId,
+    quantity: item.quantity,
+  })),
+};
+
+// Calcula o SHA-256 dos dados da tentativa de checkout.
+const hashCheckout = createHash("sha256")
+  .update(JSON.stringify(dadosParaHash))
+  .digest("hex");
+
+// Obtém a chave estável da tentativa de compra.
+const chaveIdempotencia = validarChaveIdempotencia(
+  (entrada as Record<string, unknown>).chaveIdempotencia
+);
+
+/* =====================================================
+   2. CONSULTAR TENTATIVA ANTERIOR
+   ===================================================== */
+
+const pedidoExistente =
+  await buscarPedidoPorChaveIdempotencia(chaveIdempotencia);
+
+/* =====================================================
+   VERIFICAR SE A TENTATIVA JÁ FOI REGISTRADA
+   ===================================================== */
+
+if (pedidoExistente) {
+  // Impede que um cliente acesse pedidos de outro usuário.
+  if (pedidoExistente.usuarioId !== usuarioId) {
+    throw new PedidoServiceError(
+      "Chave de idempotência já utilizada.",
+      409
+    );
+  }
+
+  // Impede reutilizar a mesma chave com outra compra.
+  // Pedidos antigos sem hash não podem ser comparados.
+  if (
+    !pedidoExistente.hashCheckout ||
+    pedidoExistente.hashCheckout !== hashCheckout
+  ) {
+    throw new PedidoServiceError(
+      "Esta chave de idempotência já foi utilizada com dados diferentes.",
+      409
+    );
+  }
+
+  // Retorna a compra original sem reservar estoque novamente.
+  // O status e o prazo da reserva continuam sendo os originais.
+  return {
+    id: pedidoExistente.id,
+    status: pedidoExistente.status,
+    valorTotal: pedidoExistente.valorTotal,
+    criadoEm: pedidoExistente.criadoEm,
+  };
+}
+
+/* =====================================================
+   3. PREPARAR UM NOVO PEDIDO
+   ===================================================== */
+
+// Somente pedidos inéditos chegam à cotação de frete.
+const pedidoPreparado = await prepararPedidoComFrete(
+  usuarioId,
+  dadosValidados
+);
 
   /* =====================================================
      2. GERAR A IDENTIFICAÇÃO DA TENTATIVA
@@ -566,7 +665,7 @@ export async function criarNovoPedido(
      para a mesma tentativa de checkout.
      ===================================================== */
 
-  const chaveIdempotencia = crypto.randomUUID();
+
 
   /* =====================================================
      3. DEFINIR A EXPIRAÇÃO DA RESERVA
@@ -602,6 +701,10 @@ export async function criarNovoPedido(
 
     // Identificação da tentativa de checkout.
     chaveIdempotencia,
+
+    // Identifica os dados originais da compra.
+    // Será comparado nas tentativas repetidas.
+    hashCheckout,
 
     // Prazo de validade da reserva.
     reservaExpiraEm,
