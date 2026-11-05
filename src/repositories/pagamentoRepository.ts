@@ -947,3 +947,80 @@ export async function confirmarPagamentoMercadoPago(
     };
   });
 }
+
+
+/* =========================================================
+   LOCALIZAR PAGAMENTO PELO IDENTIFICADOR DO MERCADO PAGO
+   =========================================================
+   Utilizada pelo webhook para localizar uma cobrança
+   recebida por notificação.
+
+   Regras:
+   - Consulta somente o identificador externo.
+   - Recupera o pedido vinculado ao pagamento.
+   - Não exige sessão do cliente.
+   - Não altera pagamentos, pedidos ou estoque.
+   ========================================================= */
+
+export async function buscarPagamentoPorOrderMercadoPago(
+  identificadorExterno: string
+) {
+  // 1. Valida o identificador recebido.
+  if (
+    typeof identificadorExterno !== "string" ||
+    !identificadorExterno.trim() ||
+    identificadorExterno.length > 255
+  ) {
+    throw new Error(
+      "Identificador externo da Order inválido."
+    );
+  }
+
+  // 2. Procura a tentativa financeira correspondente.
+  const pagamentos = await prisma.pagamento.findMany({
+    where: {
+      identificadorExterno,
+    },
+
+    select: {
+      id: true,
+      pedidoId: true,
+      metodo: true,
+      status: true,
+      valor: true,
+      chaveIdempotencia: true,
+      identificadorExterno: true,
+
+      // Recupera os dados oficiais do pedido.
+      pedido: {
+        select: {
+          id: true,
+          usuarioId: true,
+          status: true,
+          valorTotal: true,
+          reservaExpiraEm: true,
+        },
+      },
+    },
+
+    // Duas cobranças com o mesmo identificador
+    // representam uma inconsistência que exige análise.
+    take: 2,
+  });
+
+  // 3. Retorna null quando não existe cobrança local.
+  if (pagamentos.length === 0) {
+    return null;
+  }
+
+  // 4. Impede conciliar identificadores duplicados.
+  if (pagamentos.length > 1) {
+    throw new Error(
+      "Identificador externo associado a múltiplos pagamentos."
+    );
+  }
+
+  // 5. Retorna a tentativa e o pedido correspondente.
+  return pagamentos[0];
+}
+

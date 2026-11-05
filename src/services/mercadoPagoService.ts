@@ -298,6 +298,27 @@ export async function criarOrderMercadoPago(
       processing_mode: "manual",
       total_amount: dados.valorTotal.toFixed(2),
       external_reference: String(dados.pedidoId),
+
+          
+    // Configura o retorno do comprador após o checkout.
+    // Essas páginas informam o resultado ao cliente,
+    // mas não confirmam pagamentos no banco de dados.
+    config: {
+      online: {
+        success_url:
+          "https://paduaculture.com.br/pagamento/sucesso",
+
+        failure_url:
+          "https://paduaculture.com.br/pagamento/falha",
+
+        pending_url:
+          "https://paduaculture.com.br/pagamento/pendente",
+
+        // Retorna automaticamente ao site após a aprovação.
+        auto_return: "approved",
+      },
+    },
+
       // Envia os valores consolidados e validados.
       items: itensCobranca,
     }),

@@ -419,6 +419,43 @@ export function validarTransacoesMercadoPago(
     );
   }
 
+  
+// 3. Exige revisão se alguma transação apresentar
+// informações incompletas ou status desconhecido.
+// Não autorizamos aprovação diante de dados ambíguos.
+for (const transacao of transacoes) {
+  if (
+    typeof transacao.status !== "string" ||
+    !transacao.status.trim()
+  ) {
+    throw new Error(
+      "A Order contém uma transação sem status válido."
+    );
+  }
+
+  // Interpreta o status de cada transação.
+  const interpretacao =
+    interpretarStatusTransacaoMercadoPago(transacao.status);
+
+  // Status desconhecidos e estornos exigem análise.
+  if (interpretacao.exigeRevisao) {
+    throw new Error(
+      "A Order contém uma transação que exige revisão financeira."
+    );
+  }
+
+  // Não aceitamos transações sem identificação.
+  if (
+    typeof transacao.id !== "string" ||
+    !transacao.id.trim()
+  ) {
+    throw new Error(
+      "A Order contém uma transação sem identificador."
+    );
+  }
+}
+
+
   // 3. Identifica as transações aprovadas.
   const aprovadas = transacoes.filter((transacao) => {
     if (typeof transacao.status !== "string") {
