@@ -340,8 +340,33 @@ export async function registrarTentativaPagamento(
       },
     });
 
-    // Reutiliza a tentativa existente, sem criar outra.
+    // =====================================================
+    // REUTILIZAR PAGAMENTO EXISTENTE COM SEGURANÇA
+    // =====================================================
+
+    // Verifica se existe uma tentativa financeira ativa.
     if (pagamentoExistente) {
+
+      // Um pagamento aprovado não pode ser substituído
+      // por uma nova tentativa financeira.
+      if (
+        pagamentoExistente.status === StatusPagamento.APROVADO
+      ) {
+        throw new Error(
+          "Este pedido já possui um pagamento aprovado."
+        );
+      }
+
+      // Impede reutilizar uma tentativa de pagamento
+      // com método diferente do solicitado pelo cliente.
+      if (pagamentoExistente.metodo !== metodo) {
+        throw new Error(
+          "Este pedido já possui uma tentativa de pagamento ativa por outro método. Aguarde sua finalização."
+        );
+      }
+
+      // Reutiliza a tentativa existente e mantém
+      // a mesma chave de idempotência.
       return pagamentoExistente;
     }
 
@@ -416,4 +441,509 @@ export async function buscarDadosPedidoMercadoPago(
   }
 
   return pedido;
+}
+
+
+/* =========================================================
+   REGISTRAR IDENTIFICADOR EXTERNO DO PAGAMENTO
+   =========================================================
+   Associa uma tentativa financeira local ao identificador
+   retornado pelo Mercado Pago.
+
+   Não aprova o pagamento e não altera o pedido.
+   A confirmação financeira será tratada posteriormente
+   por meio de webhook e consulta ao provedor.
+   ========================================================= */
+
+export async function registrarIdentificadorMercadoPago(
+  pagamentoId: number,
+  chaveIdempotencia: string,
+  identificadorExterno: string
+) {
+  // 1. Valida os dados recebidos.
+  if (
+    !Number.isSafeInteger(pagamentoId) ||
+    pagamentoId <= 0 ||
+    !chaveIdempotencia.trim() ||
+    !identificadorExterno.trim()
+  ) {
+    throw new Error("Dados de identificação do pagamento inválidos.");
+  }
+
+  // 2. Atualiza somente a tentativa correspondente à chave
+  // de idempotência, evitando associar outro pagamento.
+  const resultado = await prisma.pagamento.updateMany({
+    where: {
+      id: pagamentoId,
+      chaveIdempotencia,
+
+      // Não sobrescreve um identificador externo já existente.
+      identificadorExterno: null,
+
+      status: {
+        in: [
+          StatusPagamento.PENDENTE,
+          StatusPagamento.PROCESSANDO,
+        ],
+      },
+    },
+    data: {
+      identificadorExterno,
+    },
+  });
+
+  // 3. Se nenhuma linha foi atualizada, verifica se a mesma
+  // identificação já havia sido registrada anteriormente.
+  if (resultado.count === 0) {
+    const pagamentoExistente = await prisma.pagamento.findFirst({
+      where: {
+        id: pagamentoId,
+        chaveIdempotencia,
+      },
+    });
+
+    if (
+      !pagamentoExistente ||
+      pagamentoExistente.identificadorExterno !== identificadorExterno
+    ) {
+      throw new Error(
+        "Não foi possível vincular o identificador do Mercado Pago."
+      );
+    }
+
+    return pagamentoExistente;
+  }
+
+  // 4. Retorna a tentativa com o identificador salvo.
+  return prisma.pagamento.findUniqueOrThrow({
+    where: {
+      id: pagamentoId,
+    },
+  });
+}
+
+/* =========================================================
+   BUSCAR TENTATIVA PARA INTEGRAÇÃO COM MERCADO PAGO
+   =========================================================
+   Recupera uma tentativa financeira já registrada.
+
+   A consulta exige o identificador do pagamento
+   e do pedido, evitando associar a tentativa
+   a um pedido diferente.
+
+   Nenhuma alteração é realizada no banco.
+   ========================================================= */
+
+export async function buscarTentativaMercadoPago(
+  pagamentoId: number,
+  pedidoId: number
+) {
+  // Valida os identificadores recebidos.
+  if (
+    !Number.isSafeInteger(pagamentoId) ||
+    pagamentoId <= 0 ||
+    !Number.isSafeInteger(pedidoId) ||
+    pedidoId <= 0
+  ) {
+    throw new Error("Identificadores de pagamento inválidos.");
+  }
+
+  // Consulta a tentativa vinculada ao pedido.
+  const pagamento = await prisma.pagamento.findFirst({
+    where: {
+      id: pagamentoId,
+      pedidoId,
+    },
+    select: {
+      id: true,
+      pedidoId: true,
+      metodo: true,
+      status: true,
+      valor: true,
+      chaveIdempotencia: true,
+      identificadorExterno: true,
+    },
+  });
+
+  // Impede continuar sem uma tentativa existente.
+  if (!pagamento) {
+    throw new Error("Tentativa de pagamento não encontrada.");
+  }
+
+  // A chave precisa existir antes da comunicação externa.
+  if (!pagamento.chaveIdempotencia) {
+    throw new Error(
+      "A tentativa de pagamento não possui chave de idempotência."
+    );
+  }
+
+  return pagamento;
+}
+
+
+/* =========================================================
+   RESERVAR EXECUÇÃO DA COBRANÇA
+   =========================================================
+   Protege o início do pagamento com uma transação.
+
+   Verifica:
+   - Existência do pedido.
+   - Status do pedido.
+   - Validade da reserva de estoque.
+   - Existência de tentativa ainda pendente.
+   - Concorrência entre requisições.
+
+   Não realiza cobranças externas.
+   ========================================================= */
+
+export async function reservarExecucaoCobranca(
+  pagamentoId: number,
+  pedidoId: number
+): Promise<boolean> {
+  // 1. Valida os identificadores recebidos.
+  if (
+    !Number.isSafeInteger(pagamentoId) ||
+    pagamentoId <= 0 ||
+    !Number.isSafeInteger(pedidoId) ||
+    pedidoId <= 0
+  ) {
+    throw new Error("Identificadores inválidos.");
+  }
+
+  // 2. Inicia a transação no MySQL.
+  return prisma.$transaction(async (tx) => {
+    // Bloqueia o pedido até a transação terminar.
+    await bloquearPedidoParaPagamento(tx, pedidoId);
+
+    // 3. Recupera os dados atuais do pedido.
+    const pedido = await tx.pedido.findUnique({
+      where: {
+        id: pedidoId,
+      },
+      select: {
+        status: true,
+        reservaExpiraEm: true,
+      },
+    });
+
+    if (!pedido) {
+      throw new Error("Pedido não encontrado.");
+    }
+
+    // 4. Verifica se o pedido aguarda pagamento.
+    if (pedido.status !== StatusPedido.AGUARDANDO_PAGAMENTO) {
+      throw new Error(
+        "Este pedido não está disponível para pagamento."
+      );
+    }
+
+    // 5. Confere se a reserva de estoque ainda está válida.
+    if (
+      !pedido.reservaExpiraEm ||
+      pedido.reservaExpiraEm.getTime() <= Date.now()
+    ) {
+      throw new Error(
+        "A reserva de estoque expirou. Faça um novo pedido."
+      );
+    }
+
+    // 6. Autoriza apenas uma requisição a iniciar a cobrança.
+    const resultado = await tx.pagamento.updateMany({
+      where: {
+        id: pagamentoId,
+        pedidoId,
+        status: StatusPagamento.PENDENTE,
+        identificadorExterno: null,
+      },
+      data: {
+        status: StatusPagamento.PROCESSANDO,
+      },
+    });
+
+    // true: cobrança reservada com sucesso.
+    // false: outra operação já iniciou o processamento.
+    return resultado.count === 1;
+  });
+}
+
+
+
+/* =========================================================
+   CONSULTAR COBRANÇA EM PROCESSAMENTO
+   =========================================================
+   Identifica uma tentativa que iniciou o processamento,
+   mas ainda não possui identificador externo registrado.
+
+   Essa situação pode ocorrer após:
+   - Falha de conexão com o Mercado Pago.
+   - Timeout da requisição.
+   - Reinicialização do servidor.
+
+   Esta função apenas consulta o banco.
+   Não altera o status e não cria cobranças.
+   ========================================================= */
+
+export async function consultarCobrancaEmProcessamento(
+  pagamentoId: number,
+  pedidoId: number
+) {
+  // 1. Valida os identificadores.
+  if (
+    !Number.isSafeInteger(pagamentoId) ||
+    pagamentoId <= 0 ||
+    !Number.isSafeInteger(pedidoId) ||
+    pedidoId <= 0
+  ) {
+    throw new Error("Identificadores de pagamento inválidos.");
+  }
+
+  // 2. Procura a tentativa que está em processamento,
+  // mas ainda não possui identificador externo.
+  const pagamento = await prisma.pagamento.findFirst({
+    where: {
+      id: pagamentoId,
+      pedidoId,
+      status: StatusPagamento.PROCESSANDO,
+      identificadorExterno: null,
+    },
+    select: {
+      id: true,
+      pedidoId: true,
+      status: true,
+      metodo: true,
+      valor: true,
+      chaveIdempotencia: true,
+      identificadorExterno: true,
+      criadoEm: true,
+      atualizadoEm: true,
+    },
+  });
+
+  // 3. Retorna null quando não existe uma tentativa
+  // com essas características.
+  return pagamento;
+}
+
+
+/* =========================================================
+   ATUALIZAR STATUS DA TENTATIVA DE PAGAMENTO
+   =========================================================
+   Atualiza o status somente quando:
+   - A tentativa pertence ao pedido informado.
+   - A cobrança possui o identificador externo esperado.
+   - O pagamento ainda está em processamento.
+   - O novo status não representa aprovação financeira.
+
+   Esta função NÃO confirma pedidos e NÃO altera estoque.
+   ========================================================= */
+
+export async function atualizarStatusTentativaPagamento(
+  pagamentoId: number,
+  pedidoId: number,
+  identificadorExterno: string,
+  novoStatus: StatusPagamento
+): Promise<boolean> {
+  // 1. Valida os identificadores internos.
+  if (
+    !Number.isSafeInteger(pagamentoId) ||
+    pagamentoId <= 0 ||
+    !Number.isSafeInteger(pedidoId) ||
+    pedidoId <= 0
+  ) {
+    throw new Error("Identificadores de pagamento inválidos.");
+  }
+
+  // 2. Exige um identificador externo válido.
+  if (
+    typeof identificadorExterno !== "string" ||
+    identificadorExterno.trim().length === 0
+  ) {
+    throw new Error(
+      "Identificador externo da cobrança inválido."
+    );
+  }
+
+  // 3. Permite somente transições não financeiras.
+  // Aprovação e estorno terão tratamento transacional
+  // próprio nas próximas etapas.
+  const statusPermitidos: StatusPagamento[] = [
+    StatusPagamento.RECUSADO,
+    StatusPagamento.CANCELADO,
+    StatusPagamento.EXPIRADO,
+  ];
+
+  if (!statusPermitidos.includes(novoStatus)) {
+    throw new Error(
+      "Esta alteração exige conciliação financeira específica."
+    );
+  }
+
+  // 4. Atualiza somente a tentativa correspondente,
+  // desde que ela ainda esteja em processamento.
+  const resultado = await prisma.pagamento.updateMany({
+    where: {
+      id: pagamentoId,
+      pedidoId,
+      identificadorExterno,
+      status: StatusPagamento.PROCESSANDO,
+    },
+    data: {
+      status: novoStatus,
+    },
+  });
+
+  // true: a atualização foi realizada.
+  // false: o registro não atendia às condições.
+  return resultado.count === 1;
+}
+
+
+/* =========================================================
+   CONFIRMAR PAGAMENTO E PEDIDO
+   =========================================================
+   Registra uma aprovação financeira já verificada
+   junto ao Mercado Pago.
+
+   Proteções:
+   - Bloqueio transacional do pedido.
+   - Conferência do identificador externo.
+   - Conferência do valor.
+   - Idempotência para notificações repetidas.
+   - Atualização conjunta do pagamento e pedido.
+
+   ATENÇÃO:
+   Esta função não consulta o Mercado Pago.
+   Somente o serviço de conciliação deve chamá-la
+   após verificar a aprovação financeira real.
+   ========================================================= */
+
+export async function confirmarPagamentoMercadoPago(
+  pagamentoId: number,
+  pedidoId: number,
+  identificadorExterno: string,
+  valorConfirmado: Prisma.Decimal
+) {
+  // 1. Valida os dados recebidos.
+  if (
+    !Number.isSafeInteger(pagamentoId) ||
+    pagamentoId <= 0 ||
+    !Number.isSafeInteger(pedidoId) ||
+    pedidoId <= 0 ||
+    typeof identificadorExterno !== "string" ||
+    !identificadorExterno.trim() ||
+    !valorConfirmado.isFinite() ||
+    valorConfirmado.lessThanOrEqualTo(0)
+  ) {
+    throw new Error("Dados de confirmação inválidos.");
+  }
+
+  // 2. Executa a confirmação dentro de uma transação.
+  return prisma.$transaction(async (tx) => {
+    // Bloqueia o pedido contra operações concorrentes.
+    await bloquearPedidoParaPagamento(tx, pedidoId);
+
+    // 3. Recupera o pedido e a tentativa financeira.
+    const pedido = await tx.pedido.findUnique({
+      where: { id: pedidoId },
+      select: {
+        id: true,
+        status: true,
+        valorTotal: true,
+        reservaExpiraEm: true,
+      },
+    });
+
+    const pagamento = await tx.pagamento.findFirst({
+      where: {
+        id: pagamentoId,
+        pedidoId,
+        identificadorExterno,
+      },
+      select: {
+        id: true,
+        status: true,
+        valor: true,
+      },
+    });
+
+    if (!pedido || !pagamento) {
+      throw new Error(
+        "Pedido ou pagamento não encontrado para confirmação."
+      );
+    }
+
+    // 4. Confere os valores financeiros.
+    if (
+      !pedido.valorTotal.equals(valorConfirmado) ||
+      !pagamento.valor.equals(valorConfirmado)
+    ) {
+      throw new Error(
+        "O valor confirmado não corresponde ao pedido."
+      );
+    }
+
+    // 5. Trata notificações repetidas sem duplicar operações.
+    if (pagamento.status === StatusPagamento.APROVADO) {
+      if (pedido.status === StatusPedido.CONFIRMADO) {
+        return {
+          pedidoId,
+          pagamentoId,
+          confirmado: true,
+          jaConfirmado: true,
+        };
+      }
+
+      throw new Error(
+        "Pagamento aprovado com estado de pedido inconsistente."
+      );
+    }
+
+    // 6. Impede confirmar pedidos cancelados ou alterados.
+    if (pedido.status !== StatusPedido.AGUARDANDO_PAGAMENTO) {
+      throw new Error(
+        "O pedido não está disponível para confirmação."
+      );
+    }
+
+    // 7. Impede confirmar uma reserva já expirada.
+    if (
+      !pedido.reservaExpiraEm ||
+      pedido.reservaExpiraEm.getTime() <= Date.now()
+    ) {
+      throw new Error(
+        "A reserva expirou. A cobrança exige conciliação manual."
+      );
+    }
+
+    // 8. Exige uma tentativa ainda em processamento.
+    if (pagamento.status !== StatusPagamento.PROCESSANDO) {
+      throw new Error(
+        "A tentativa não está disponível para confirmação."
+      );
+    }
+
+    // 9. Registra a aprovação financeira.
+    await tx.pagamento.update({
+      where: { id: pagamentoId },
+      data: {
+        status: StatusPagamento.APROVADO,
+        pagoEm: new Date(),
+      },
+    });
+
+    // 10. Confirma o pedido na mesma transação.
+    await tx.pedido.update({
+      where: { id: pedidoId },
+      data: {
+        status: StatusPedido.CONFIRMADO,
+      },
+    });
+
+    return {
+      pedidoId,
+      pagamentoId,
+      confirmado: true,
+      jaConfirmado: false,
+    };
+  });
 }

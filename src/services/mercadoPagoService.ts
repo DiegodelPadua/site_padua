@@ -28,16 +28,22 @@ export type ItemPagamentoMercadoPago = {
 };
 
 export type DadosPagamentoMercadoPago = {
+  // Identificador do pedido registrado no MySQL.
   pedidoId: number;
+
+  // Valor final que o cliente deverá pagar.
   valorTotal: Prisma.Decimal;
 
-  // Valor do frete calculado e salvo no pedido.
+  // Valor do frete registrado no pedido.
   valorFrete: Prisma.Decimal;
 
+  // Desconto aplicado à compra.
+  valorDesconto: Prisma.Decimal;
+
+  // Produtos e respectivos valores originais.
   itens: ItemPagamentoMercadoPago[];
 
-  // Chave persistida e reutilizada nas tentativas
-  // de repetição da mesma operação.
+  // Chave persistida para evitar duplicidade da operação.
   chaveIdempotencia: string;
 };
 
@@ -46,6 +52,37 @@ type RespostaOrderMercadoPago = {
   checkout_url?: string;
   status?: string;
 };
+
+
+/* =========================================================
+   TIPOS PARA CONSULTA FINANCEIRA DE UMA ORDER
+   =========================================================
+   Representam os campos que precisamos inspecionar
+   durante a conciliação.
+
+   Não representam uma confirmação de pagamento.
+   ========================================================= */
+
+export type TransacaoOrderMercadoPago = {
+  id?: string;
+  status?: string;
+  status_detail?: string;
+  amount?: string;
+};
+
+export type ConsultaOrderMercadoPago = {
+  id?: string;
+  status?: string;
+  status_detail?: string;
+  external_reference?: string;
+  total_amount?: string;
+
+  // Transações financeiras associadas à Order.
+  transactions?: {
+    payments?: TransacaoOrderMercadoPago[];
+  };
+};
+
 
 /* =========================================================
    CRIAR ORDER DE PAGAMENTO
@@ -100,11 +137,18 @@ export async function criarOrderMercadoPago(
     throw new Error("Chave de idempotência inválida.");
   }
 
-  /* =====================================================
-     3. PREPARAR OS ITENS
-     ===================================================== */
 
-  const itens = dados.itens.map((item) => {
+  /* =====================================================
+    3. VALIDAR OS ITENS ORIGINAIS
+    =====================================================
+    Confere os produtos recebidos do banco de dados.
+
+    A montagem dos itens financeiros será realizada
+    posteriormente, considerando o desconto aplicado.
+    ===================================================== */
+
+  // Valida os dados de cada produto antes do cálculo.
+  for (const item of dados.itens) {
     if (
       !item.nome.trim() ||
       !Number.isSafeInteger(item.quantidade) ||
@@ -114,16 +158,9 @@ export async function criarOrderMercadoPago(
     ) {
       throw new Error("Item de pagamento inválido.");
     }
+  }
 
-    return {
-      title: item.nome,
-      quantity: item.quantidade,
-      unit_price: item.precoUnitario.toFixed(2),
-    };
-  });
-
-  // Adiciona o frete como um item separado no pagamento.
-  // O valor vem do pedido validado pelo servidor.
+  // Valida o valor do frete registrado no pedido.
   if (
     !dados.valorFrete.isFinite() ||
     dados.valorFrete.lessThan(0)
@@ -131,36 +168,118 @@ export async function criarOrderMercadoPago(
     throw new Error("Valor do frete inválido.");
   }
 
-  if (dados.valorFrete.greaterThan(0)) {
-    itens.push({
-      title: "Frete",
-      quantity: 1,
-      unit_price: dados.valorFrete.toFixed(2),
-    });
-  }
 
-  /* =====================================================
-     4. CONFERIR A SOMA DOS ITENS
-     =====================================================
-     O Mercado Pago exige que a soma dos itens
-     corresponda ao total da order.
-     ===================================================== */
 
-    // Soma os produtos e o frete para conferir
-    // o valor total que será cobrado.
-    const somaItens = dados.itens.reduce(
+/* =====================================================
+   4. VALIDAR PRODUTOS, FRETE E DESCONTO
+   =====================================================
+   Confere os valores oficiais registrados no MySQL.
+
+   O cálculo utiliza Prisma.Decimal para evitar
+   diferenças de precisão com números decimais.
+   ===================================================== */
+
+    // Soma os valores originais de todos os produtos.
+    const subtotalProdutos = dados.itens.reduce(
       (total, item) =>
         total.plus(
           item.precoUnitario.mul(item.quantidade)
         ),
       new Prisma.Decimal(0)
-    ).plus(dados.valorFrete);
-
-  if (!somaItens.equals(dados.valorTotal)) {
-    throw new Error(
-      "A soma dos itens não corresponde ao valor total."
     );
-  }
+
+    // Verifica se o desconto informado é válido.
+    if (
+      !dados.valorDesconto.isFinite() ||
+      dados.valorDesconto.lessThan(0)
+    ) {
+      throw new Error("Valor do desconto inválido.");
+    }
+
+    // Calcula o total que o cliente realmente deve pagar.
+    const totalCalculado = subtotalProdutos
+      .plus(dados.valorFrete)
+      .minus(dados.valorDesconto);
+
+    // Impede descontos que produzam valores inválidos.
+    if (
+      totalCalculado.lessThanOrEqualTo(0) ||
+      !totalCalculado.equals(dados.valorTotal)
+    ) {
+      throw new Error(
+        "O valor total não corresponde aos produtos, frete e desconto."
+      );
+    }
+
+    // Ainda não modificamos os itens enviados ao Mercado Pago.
+    // A distribuição do desconto será implementada separadamente,
+    // respeitando os valores monetários e as regras da API.
+
+
+
+    /* =====================================================
+      PREPARAR ITENS FINANCEIROS DA ORDER
+      =====================================================
+      Consolida os produtos com o desconto aplicado.
+
+      Evita diferenças de centavos decorrentes da
+      distribuição de descontos entre várias unidades.
+      ===================================================== */
+
+    // Calcula o valor dos produtos após o desconto.
+    const produtosComDesconto = subtotalProdutos.minus(
+      dados.valorDesconto
+    );
+
+    // Não permite uma linha financeira negativa.
+    if (produtosComDesconto.lessThan(0)) {
+      throw new Error(
+        "O desconto não pode superar o valor dos produtos."
+      );
+    }
+
+    // Monta os itens financeiros que serão cobrados.
+    const itensCobranca: Array<{
+      title: string;
+      quantity: number;
+      unit_price: string;
+    }> = [];
+
+    // Adiciona os produtos com o desconto já aplicado.
+    if (produtosComDesconto.greaterThan(0)) {
+      itensCobranca.push({
+        title: "Produtos Pádua Culture (desconto aplicado)",
+        quantity: 1,
+        unit_price: produtosComDesconto.toFixed(2),
+      });
+    }
+
+    // Mantém o frete separado dos produtos.
+    if (dados.valorFrete.greaterThan(0)) {
+      itensCobranca.push({
+        title: "Frete",
+        quantity: 1,
+        unit_price: dados.valorFrete.toFixed(2),
+      });
+    }
+
+    // Confere o total efetivamente enviado ao provedor.
+    const totalItensCobranca = itensCobranca.reduce(
+      (total, item) =>
+        total.plus(
+          new Prisma.Decimal(item.unit_price).mul(item.quantity)
+        ),
+      new Prisma.Decimal(0)
+    );
+
+    if (!totalItensCobranca.equals(dados.valorTotal)) {
+      throw new Error(
+        "Os itens da cobrança não correspondem ao total do pedido."
+      );
+    }
+
+
+
 
   /* =====================================================
      5. ENVIAR REQUISIÇÃO AO MERCADO PAGO
@@ -179,7 +298,8 @@ export async function criarOrderMercadoPago(
       processing_mode: "manual",
       total_amount: dados.valorTotal.toFixed(2),
       external_reference: String(dados.pedidoId),
-      items: itens,
+      // Envia os valores consolidados e validados.
+      items: itensCobranca,
     }),
     cache: "no-store",
     signal: AbortSignal.timeout(15000),
@@ -235,4 +355,117 @@ export async function criarOrderMercadoPago(
     checkoutUrl: urlPagamento.toString(),
     status: resultado.status ?? "created",
   };
+}
+
+
+/* =========================================================
+   CONSULTAR ORDER NO MERCADO PAGO
+   =========================================================
+   Consulta uma order já criada pelo seu identificador.
+
+   Não cria cobranças e não modifica o banco de dados.
+   O resultado deverá ser conciliado com o pedido
+   registrado no MySQL antes de atualizar qualquer status.
+   ========================================================= */
+
+export async function consultarOrderMercadoPago(
+  orderId: string
+) {
+  // 1. Verifica se o identificador foi informado.
+  if (
+    typeof orderId !== "string" ||
+    !/^ORD[A-Za-z0-9_-]{1,100}$/.test(orderId)
+  ) {
+    throw new Error("Identificador da order inválido.");
+  }
+
+  // 2. Recupera a credencial somente no servidor.
+  const accessToken =
+    process.env.MERCADO_PAGO_ACCESS_TOKEN;
+
+  if (!accessToken) {
+    throw new Error(
+      "Access Token do Mercado Pago não configurado."
+    );
+  }
+
+  // 3. Consulta a order diretamente no Mercado Pago.
+  const resposta = await fetch(
+    `${MERCADO_PAGO_API}/${encodeURIComponent(orderId)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    }
+  );
+
+  // 4. Interrompe a operação em caso de erro.
+  if (!resposta.ok) {
+    throw new Error(
+      `Falha ao consultar order. HTTP ${resposta.status}.`
+    );
+  }
+
+ // Interpreta a estrutura da Order retornada pelo provedor.
+// Os dados ainda precisarão ser validados antes da conciliação.
+const resultado =
+  (await resposta.json()) as ConsultaOrderMercadoPago;
+
+
+  // 6. Confere a identidade da order retornada.
+  if (resultado.id !== orderId) {
+    throw new Error(
+      "O Mercado Pago retornou uma order diferente."
+    );
+  }
+
+  // 7. Exige um status válido para permitir a conciliação.
+  if (
+    typeof resultado.status !== "string" ||
+    resultado.status.trim().length === 0
+  ) {
+    throw new Error(
+      "A consulta retornou uma order sem status válido."
+    );
+  }
+
+  // 8. Exige a referência do pedido da Pádua Culture.
+  // Essa referência será comparada com o pedido no MySQL
+  // antes de qualquer atualização financeira.
+  if (
+    typeof resultado.external_reference !== "string" ||
+    resultado.external_reference.trim().length === 0
+  ) {
+    throw new Error(
+      "A order não possui referência externa válida."
+    );
+  }
+
+  // 9. Exige o valor total da cobrança.
+  // A comparação monetária será feita com Prisma.Decimal
+  // na camada responsável pela conciliação.
+  if (
+    typeof resultado.total_amount !== "string" ||
+    !/^\d+(\.\d{1,2})?$/.test(resultado.total_amount)
+  ) {
+    throw new Error(
+      "A order não possui valor total válido."
+    );
+  }
+
+
+// Retorna também as transações associadas à Order.
+// Uma lista vazia não representa pagamento aprovado.
+return {
+  mercadoPagoOrderId: resultado.id,
+  status: resultado.status,
+  statusDetail: resultado.status_detail,
+  referenciaExterna: resultado.external_reference,
+  valorTotal: resultado.total_amount,
+  transacoes: resultado.transactions?.payments ?? [],
+};
 }
