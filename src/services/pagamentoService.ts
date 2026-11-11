@@ -24,8 +24,9 @@ import {
   buscarTentativaMercadoPago,
   reservarExecucaoCobranca,
   registrarIdentificadorMercadoPago,
+  buscarPagamentoPorOrderMercadoPago,
+  confirmarPagamentoMercadoPago,
 } from "../repositories/pagamentoRepository";
-
 // Serviços de criação e consulta de cobranças no Mercado Pago.
 import {
   criarOrderMercadoPago,
@@ -984,5 +985,238 @@ export async function conciliarCobrancaMercadoPago(
         : null,
     valorConferido: pedido.valorTotal.toFixed(2),
     motivo: validacao.motivo,
+  };
+}
+
+/* =========================================================
+   PROCESSAR NOTIFICAÇÃO AUTENTICADA DO MERCADO PAGO
+   =========================================================
+   A rota valida a assinatura antes de chamar esta função.
+   Aprovação exige consulta ao provedor e gravação atômica.
+   Esta etapa permanece restrita a uma conta de teste.
+   ========================================================= */
+
+async function consultarVendedorTesteAutenticado() {
+  const accessToken =
+    process.env.MERCADO_PAGO_ACCESS_TOKEN;
+
+  if (!accessToken) {
+    throw new Error("Credencial de teste não configurada.");
+  }
+
+  const resposta = await fetch(
+    "https://api.mercadopago.com/users/me",
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+      redirect: "error",
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    }
+  );
+
+  if (!resposta.ok) {
+    throw new Error(
+      "Não foi possível verificar a conta de teste."
+    );
+  }
+
+  const corpo: unknown = await resposta.json();
+
+  if (
+    !corpo ||
+    typeof corpo !== "object" ||
+    Array.isArray(corpo)
+  ) {
+    throw new Error("Conta de teste inválida.");
+  }
+
+  const conta = corpo as Record<string, unknown>;
+
+  const id =
+    typeof conta.id === "string" &&
+    /^[1-9]\d*$/.test(conta.id)
+      ? conta.id
+      : typeof conta.id === "number" &&
+          Number.isSafeInteger(conta.id) &&
+          conta.id > 0
+        ? String(conta.id)
+        : null;
+
+  if (
+    !id ||
+    conta.site_id !== "MLB" ||
+    !Array.isArray(conta.tags) ||
+    !conta.tags.includes("test_user")
+  ) {
+    throw new Error(
+      "A conta autenticada não foi reconhecida como conta brasileira de teste."
+    );
+  }
+
+  return id;
+}
+
+export async function processarNotificacaoMercadoPago(
+  orderId: string
+) {
+  if (process.env.MERCADO_PAGO_CHECKOUT_MODO !== "teste") {
+    return {
+      processado: false,
+      confirmado: false,
+      motivo: "CONCILIACAO_DESABILITADA",
+    };
+  }
+
+  if (!/^ORD[A-Za-z0-9_-]{1,100}$/.test(orderId)) {
+    throw new Error("Identificador da Order inválido.");
+  }
+
+  const pagamento =
+    await buscarPagamentoPorOrderMercadoPago(orderId);
+
+  if (!pagamento) {
+    return {
+      processado: false,
+      confirmado: false,
+      motivo: "VINCULO_PENDENTE",
+    };
+  }
+
+  // Consultas independentes em paralelo.
+  // Nenhuma escrita acontece antes das verificações.
+  const [order, vendedorId] = await Promise.all([
+    consultarOrderMercadoPago(orderId),
+    consultarVendedorTesteAutenticado(),
+  ]);
+
+  const valor = new Prisma.Decimal(order.valorTotal);
+
+  if (
+    order.mercadoPagoOrderId !== orderId ||
+    order.referenciaExterna !== String(pagamento.pedidoId) ||
+    order.vendedorId !== vendedorId ||
+    order.liveMode === true ||
+    !valor.isFinite() ||
+    valor.lessThanOrEqualTo(0) ||
+    !valor.equals(pagamento.valor) ||
+    !valor.equals(pagamento.pedido.valorTotal) ||
+    order.possuiAjustesFinanceiros
+  ) {
+    return {
+      processado: false,
+      confirmado: false,
+      motivo: "DADOS_EXIGEM_REVISAO",
+    };
+  }
+
+  const estado = order.status.trim().toLowerCase();
+  const detalhe = order.statusDetail?.trim().toLowerCase();
+
+  if (
+    ["created", "processing", "action_required"].includes(estado)
+  ) {
+    const semRecebimento =
+      order.valorTotalPago === null ||
+      new Prisma.Decimal(order.valorTotalPago).equals(0);
+
+    const transacoesPendentes = order.transacoes.every(
+      (transacao) =>
+        [
+          "created",
+          "pending",
+          "in_process",
+          "processing",
+          "action_required",
+          "rejected",
+          "failed",
+          "canceled",
+          "cancelled",
+        ].includes(transacao.status ?? "") &&
+        (
+          transacao.paid_amount === undefined ||
+          new Prisma.Decimal(transacao.paid_amount).equals(0)
+        )
+    );
+
+    return {
+      processado: semRecebimento && transacoesPendentes,
+      confirmado: false,
+      motivo:
+        semRecebimento && transacoesPendentes
+          ? "PENDENTE"
+          : "DADOS_EXIGEM_REVISAO",
+    };
+  }
+
+  // Não soma várias transações nem interpreta captura pendente como crédito.
+  if (
+    estado !== "processed" ||
+    detalhe !== "accredited" ||
+    order.transacoes.length !== 1
+  ) {
+    return {
+      processado: false,
+      confirmado: false,
+      motivo: "ESTADO_EXIGE_REVISAO",
+    };
+  }
+
+  const transacao = order.transacoes[0];
+  const metodo = transacao.payment_method;
+
+  const metodoConfirmado =
+    metodo?.id === "pix" && metodo.type === "bank_transfer"
+      ? MetodoPagamento.PIX
+      : metodo &&
+          [
+            "credit_card",
+            "debit_card",
+            "prepaid_card",
+          ].includes(metodo.type ?? "")
+        ? MetodoPagamento.CARTAO
+        : null;
+
+  if (
+    !transacao.id ||
+    !/^[A-Za-z0-9_-]{1,150}$/.test(transacao.id) ||
+    transacao.status !== "processed" ||
+    transacao.status_detail !== "accredited" ||
+    !metodoConfirmado ||
+    order.valorTotalPago === null ||
+    transacao.amount === undefined ||
+    transacao.paid_amount === undefined ||
+    !new Prisma.Decimal(order.valorTotalPago).equals(valor) ||
+    !new Prisma.Decimal(transacao.amount).equals(valor) ||
+    !new Prisma.Decimal(transacao.paid_amount).equals(valor)
+  ) {
+    return {
+      processado: false,
+      confirmado: false,
+      motivo: "COMPROVANTE_EXIGE_REVISAO",
+    };
+  }
+
+  const resultado = await confirmarPagamentoMercadoPago(
+    pagamento.id,
+    pagamento.pedidoId,
+    orderId,
+    valor,
+    {
+      transacaoId: transacao.id,
+      metodo: metodoConfirmado,
+    }
+  );
+
+  return {
+    processado: true,
+    confirmado: resultado.confirmado,
+    jaConfirmado: resultado.jaConfirmado,
+    exigeRevisao: resultado.exigeRevisao,
+    motivo: resultado.exigeRevisao
+      ? "PAGAMENTO_RECEBIDO_REVISAO_MANUAL"
+      : "CONFIRMADO",
   };
 }

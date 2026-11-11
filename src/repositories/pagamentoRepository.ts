@@ -866,137 +866,290 @@
       após verificar a aprovação financeira real.
       ========================================================= */
    
-   export async function confirmarPagamentoMercadoPago(
-     pagamentoId: number,
-     pedidoId: number,
-     identificadorExterno: string,
-     valorConfirmado: Prisma.Decimal
-   ) {
-     // 1. Valida os dados recebidos.
-     if (
-       !Number.isSafeInteger(pagamentoId) ||
-       pagamentoId <= 0 ||
-       !Number.isSafeInteger(pedidoId) ||
-       pedidoId <= 0 ||
-       typeof identificadorExterno !== "string" ||
-       !identificadorExterno.trim() ||
-       !valorConfirmado.isFinite() ||
-       valorConfirmado.lessThanOrEqualTo(0)
-     ) {
-       throw new Error("Dados de confirmação inválidos.");
-     }
-   
-     // 2. Executa a confirmação dentro de uma transação.
-     return prisma.$transaction(async (tx) => {
-       // Bloqueia o pedido contra operações concorrentes.
-       await bloquearPedidoParaPagamento(tx, pedidoId);
-   
-       // 3. Recupera o pedido e a tentativa financeira.
-       const pedido = await tx.pedido.findUnique({
-         where: { id: pedidoId },
-         select: {
-           id: true,
-           status: true,
-           valorTotal: true,
-           reservaExpiraEm: true,
-         },
-       });
-   
-       const pagamento = await tx.pagamento.findFirst({
-         where: {
-           id: pagamentoId,
-           pedidoId,
-           identificadorExterno,
-         },
-         select: {
-           id: true,
-           status: true,
-           valor: true,
-         },
-       });
-   
-       if (!pedido || !pagamento) {
-         throw new Error(
-           "Pedido ou pagamento não encontrado para confirmação."
-         );
-       }
-   
-       // 4. Confere os valores financeiros.
-       if (
-         !pedido.valorTotal.equals(valorConfirmado) ||
-         !pagamento.valor.equals(valorConfirmado)
-       ) {
-         throw new Error(
-           "O valor confirmado não corresponde ao pedido."
-         );
-       }
-   
-       // 5. Trata notificações repetidas sem duplicar operações.
-       if (pagamento.status === StatusPagamento.APROVADO) {
-         if (pedido.status === StatusPedido.CONFIRMADO) {
-           return {
-             pedidoId,
-             pagamentoId,
-             confirmado: true,
-             jaConfirmado: true,
-           };
-         }
-   
-         throw new Error(
-           "Pagamento aprovado com estado de pedido inconsistente."
-         );
-       }
-   
-       // 6. Impede confirmar pedidos cancelados ou alterados.
-       if (pedido.status !== StatusPedido.AGUARDANDO_PAGAMENTO) {
-         throw new Error(
-           "O pedido não está disponível para confirmação."
-         );
-       }
-   
-       // 7. Impede confirmar uma reserva já expirada.
-       if (
-         !pedido.reservaExpiraEm ||
-         pedido.reservaExpiraEm.getTime() <= Date.now()
-       ) {
-         throw new Error(
-           "A reserva expirou. A cobrança exige conciliação manual."
-         );
-       }
-   
-       // 8. Exige uma tentativa ainda em processamento.
-       if (pagamento.status !== StatusPagamento.PROCESSANDO) {
-         throw new Error(
-           "A tentativa não está disponível para confirmação."
-         );
-       }
-   
-       // 9. Registra a aprovação financeira.
-       await tx.pagamento.update({
-         where: { id: pagamentoId },
-         data: {
-           status: StatusPagamento.APROVADO,
-           pagoEm: new Date(),
-         },
-       });
-   
-       // 10. Confirma o pedido na mesma transação.
-       await tx.pedido.update({
-         where: { id: pedidoId },
-         data: {
-           status: StatusPedido.CONFIRMADO,
-         },
-       });
-   
-       return {
-         pedidoId,
-         pagamentoId,
-         confirmado: true,
-         jaConfirmado: false,
-       };
-     });
-   }
-   
+      export async function confirmarPagamentoMercadoPago(
+      pagamentoId: number,
+      pedidoId: number,
+      identificadorExterno: string,
+      valorConfirmado: Prisma.Decimal,
+      comprovante: {
+        transacaoId: string;
+        metodo: MetodoPagamento;
+      }
+    ) {
+      if (
+        !Number.isSafeInteger(pagamentoId) ||
+        pagamentoId <= 0 ||
+        !Number.isSafeInteger(pedidoId) ||
+        pedidoId <= 0 ||
+        typeof identificadorExterno !== "string" ||
+        !/^ORD[A-Za-z0-9_-]{1,100}$/.test(identificadorExterno) ||
+        !valorConfirmado.isFinite() ||
+        valorConfirmado.lessThanOrEqualTo(0) ||
+        valorConfirmado.decimalPlaces() > 2 ||
+        !comprovante ||
+        typeof comprovante.transacaoId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,150}$/.test(comprovante.transacaoId) ||
+        ![MetodoPagamento.PIX, MetodoPagamento.CARTAO].includes(
+          comprovante.metodo
+        )
+      ) {
+        throw new Error("Dados de confirmação inválidos.");
+      }
+
+      return prisma.$transaction(async (tx) => {
+        // Todas as decisões sobre o pedido acontecem sob o mesmo bloqueio.
+        await bloquearPedidoParaPagamento(tx, pedidoId);
+
+        const pedido = await tx.pedido.findUnique({
+          where: { id: pedidoId },
+          select: {
+            id: true,
+            status: true,
+            valorTotal: true,
+            reservaExpiraEm: true,
+            itens: {
+              select: {
+                varianteId: true,
+                quantidade: true,
+              },
+            },
+          },
+        });
+
+        const pagamento = await tx.pagamento.findFirst({
+          where: {
+            id: pagamentoId,
+            pedidoId,
+            identificadorExterno,
+          },
+          select: {
+            id: true,
+            status: true,
+            valor: true,
+            metodo: true,
+          },
+        });
+
+        if (
+          !pedido ||
+          !pagamento ||
+          !pedido.valorTotal.equals(valorConfirmado) ||
+          !pagamento.valor.equals(valorConfirmado) ||
+          (
+            pagamento.metodo !== null &&
+            pagamento.metodo !== comprovante.metodo
+          )
+        ) {
+          throw new Error(
+            "Pagamento incompatível com o pedido ou comprovante."
+          );
+        }
+
+        // Uma aprovação salva conserva a decisão original nos reenvios.
+        const registros = await tx.transacaoPagamento.findMany({
+          where: {
+            pagamentoId,
+            tipo: "APROVACAO_MP",
+          },
+          take: 2,
+        });
+
+        if (registros.length > 0) {
+          const registro = registros[0];
+
+          if (
+            registros.length !== 1 ||
+            registro.identificadorExterno !== comprovante.transacaoId ||
+            !registro.valor.equals(valorConfirmado) ||
+            pagamento.status !== StatusPagamento.APROVADO ||
+            pagamento.metodo !== comprovante.metodo
+          ) {
+            throw new Error("Comprovante financeiro inconsistente.");
+          }
+
+          const confirmado = registro.status === "CONFIRMADO";
+
+          const estadoOperacionalValido = (
+            [
+              "CONFIRMADO",
+              "EM_PREPARACAO",
+              "ENVIADO",
+              "ENTREGUE",
+            ] as string[]
+          ).includes(pedido.status);
+
+          if (
+            (
+              !confirmado &&
+              registro.status !== "REVISAO_MANUAL"
+            ) ||
+            (confirmado && !estadoOperacionalValido)
+          ) {
+            throw new Error(
+              "A aprovação exige revisão do estado atual do pedido."
+            );
+          }
+
+          return {
+            pedidoId,
+            pagamentoId,
+            confirmado,
+            jaConfirmado: confirmado,
+            exigeRevisao: !confirmado,
+          };
+        }
+
+        if (
+          pagamento.status === StatusPagamento.APROVADO ||
+          pagamento.status === StatusPagamento.ESTORNADO
+        ) {
+          throw new Error(
+            "Estado financeiro anterior exige revisão."
+          );
+        }
+
+        const comprovanteUtilizado =
+          await tx.transacaoPagamento.findFirst({
+            where: {
+              identificadorExterno: comprovante.transacaoId,
+              tipo: "APROVACAO_MP",
+            },
+            select: { id: true },
+          });
+
+        if (comprovanteUtilizado) {
+          throw new Error(
+            "Comprovante já vinculado a outro pagamento."
+          );
+        }
+
+        const outroPagamento = await tx.pagamento.findFirst({
+          where: {
+            pedidoId,
+            id: { not: pagamentoId },
+            status: StatusPagamento.APROVADO,
+          },
+          select: { id: true },
+        });
+
+        // O estoque já foi reduzido na reserva: não reduzimos novamente.
+        const movimentos = await tx.movimentacaoEstoque.findMany({
+          where: { pedidoId },
+          select: {
+            varianteId: true,
+            tipo: true,
+            quantidade: true,
+          },
+        });
+
+        const esperadas = new Map<number, number>();
+        let reservaIntegra = pedido.itens.length > 0;
+
+        for (const item of pedido.itens) {
+          if (
+            item.varianteId === null ||
+            item.quantidade <= 0
+          ) {
+            reservaIntegra = false;
+            continue;
+          }
+
+          esperadas.set(
+            item.varianteId,
+            (esperadas.get(item.varianteId) ?? 0) + item.quantidade
+          );
+        }
+
+        const reservadas = new Map<number, number>();
+
+        for (const movimento of movimentos) {
+          // Qualquer liberação ou outra movimentação exige análise manual.
+          if (
+            movimento.tipo !== "RESERVA" ||
+            movimento.quantidade <= 0
+          ) {
+            reservaIntegra = false;
+            continue;
+          }
+
+          reservadas.set(
+            movimento.varianteId,
+            (reservadas.get(movimento.varianteId) ?? 0) +
+              movimento.quantidade
+          );
+        }
+
+        if (esperadas.size !== reservadas.size) {
+          reservaIntegra = false;
+        }
+
+        for (const [varianteId, quantidade] of esperadas) {
+          if (reservadas.get(varianteId) !== quantidade) {
+            reservaIntegra = false;
+          }
+        }
+
+        const agora = new Date();
+
+        const confirmado =
+          pedido.status === StatusPedido.AGUARDANDO_PAGAMENTO &&
+          pagamento.status === StatusPagamento.PROCESSANDO &&
+          pedido.reservaExpiraEm !== null &&
+          pedido.reservaExpiraEm.getTime() > agora.getTime() &&
+          reservaIntegra &&
+          !outroPagamento;
+
+        // Mesmo um recebimento tardio precisa ficar registrado financeiramente.
+        await tx.pagamento.update({
+          where: { id: pagamentoId },
+          data: {
+            status: StatusPagamento.APROVADO,
+            metodo: comprovante.metodo,
+            pagoEm: agora,
+          },
+        });
+
+        await tx.transacaoPagamento.create({
+          data: {
+            pagamentoId,
+            tipo: "APROVACAO_MP",
+            status: confirmado ? "CONFIRMADO" : "REVISAO_MANUAL",
+            identificadorExterno: comprovante.transacaoId,
+            valor: valorConfirmado,
+          },
+        });
+
+        if (confirmado) {
+          await tx.pedido.update({
+            where: { id: pedidoId },
+            data: {
+              status: StatusPedido.CONFIRMADO,
+              reservaExpiraEm: null,
+            },
+          });
+        }
+
+        await tx.historicoPedido.create({
+          data: {
+            pedidoId,
+            status: confirmado
+              ? StatusPedido.CONFIRMADO
+              : pedido.status,
+            descricao: confirmado
+              ? "Pagamento Mercado Pago conferido e pedido confirmado."
+              : "Pagamento Mercado Pago recebido. Revisão manual necessária antes de atender ou devolver o valor.",
+          },
+        });
+
+        return {
+          pedidoId,
+          pagamentoId,
+          confirmado,
+          jaConfirmado: false,
+          exigeRevisao: !confirmado,
+        };
+      });
+    }
    /* =========================================================
       LOCALIZAR PAGAMENTO PELO IDENTIFICADOR DO MERCADO PAGO
       =========================================================

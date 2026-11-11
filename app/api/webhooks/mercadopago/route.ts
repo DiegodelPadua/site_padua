@@ -1,29 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 
 import {
   validarAssinaturaMercadoPago,
 } from "../../../../src/utils/validarAssinaturaMercadoPago";
 
 import {
-  buscarPagamentoPorOrderMercadoPago,
-} from "../../../../src/repositories/pagamentoRepository";
-
-import {
-  consultarOrderMercadoPago,
-} from "../../../../src/services/mercadoPagoService";
-
-import {
-  mapearStatusMercadoPago,
-  interpretarStatusTransacaoMercadoPago,
-} from "../../../../src/utils/mercadoPagoStatus";
+  processarNotificacaoMercadoPago,
+} from "../../../../src/services/pagamentoService";
 
 /* =========================================================
    WEBHOOK MERCADO PAGO - PÁDUA CULTURE
    =========================================================
-   Valida a assinatura e consulta a Order no provedor.
-   Não confirma pagamentos, pedidos ou movimentações de estoque
-   enquanto a conciliação transacional não estiver conectada.
+   Valida a assinatura antes de chamar o serviço de conciliação.
+   O serviço verifica a Order no provedor e salva a aprovação
+   junto com a decisão sobre o pedido, dentro de uma transação.
    ========================================================= */
 
 export const runtime = "nodejs";
@@ -175,82 +165,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Não usa status, valores ou live_mode do corpo para aprovar pagamentos.
-    const pagamento =
-      await buscarPagamentoPorOrderMercadoPago(dataId);
-
-    if (!pagamento) {
-      // O webhook pode chegar antes de o ID externo ser persistido.
-      // Não responde sucesso, para não encerrar prematuramente os reenvios.
-      return responder(
-        {
-          recebido: true,
-          processado: false,
-          motivo: "VINCULO_PENDENTE",
-        },
-        503
-      );
-    }
-
-    const order = await consultarOrderMercadoPago(dataId);
-    const valor = new Prisma.Decimal(order.valorTotal);
-
-    if (
-      order.mercadoPagoOrderId !== dataId ||
-      order.referenciaExterna !==
-        String(pagamento.pedidoId) ||
-      !valor.equals(pagamento.valor) ||
-      !valor.equals(pagamento.pedido.valorTotal)
-    ) {
-      return responder(
-        {
-          recebido: true,
-          processado: false,
-          motivo: "DADOS_DIVERGENTES",
-        },
-        503
-      );
-    }
-
-    const estado = mapearStatusMercadoPago(
-      order.status,
-      order.statusDetail
-    );
-
-    const exigeConciliacao =
-      estado.resultado !== "PENDENTE" ||
-      order.transacoes.some((transacao) => {
-        const analise =
-          interpretarStatusTransacaoMercadoPago(
-            transacao.status ?? "",
-            transacao.status_detail
-          );
-
-        return analise.aprovado || analise.exigeRevisao;
-      });
-
-    if (exigeConciliacao) {
-      // Não reconhece como concluída uma atualização financeira ainda não salva.
-      return responder(
-        {
-          recebido: true,
-          processado: false,
-          motivo: "CONCILIACAO_PENDENTE",
-        },
-        503
-      );
-    }
+    // Somente o ID autenticado é encaminhado.
+    // Status e valores serão consultados diretamente no provedor.
+    const resultado =
+      await processarNotificacaoMercadoPago(dataId);
 
     return responder(
-      {
-        recebido: true,
-        conferido: true,
-        confirmado: false,
-      },
-      200
+      { recebido: true, ...resultado },
+      resultado.processado ? 200 : 503
     );
   } catch {
-    // Mensagem genérica: não registra assinatura, segredo ou resposta financeira.
+    // Não registra assinatura, segredo ou resposta financeira.
     console.error(
       "Falha no processamento do webhook Mercado Pago."
     );
