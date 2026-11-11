@@ -411,11 +411,17 @@ export default function Checkout() {
   const [erroRecuperacao, setErroRecuperacao] =
     useState("");
 
+  const [pedidoParaReinicioId, setPedidoParaReinicioId] =
+    useState<number | null>(null);
+
+
   const [etapaPagamento, setEtapaPagamento] =
     useState("");
 
   // Recupera a tentativa da mesma aba sem enviar pedidos automaticamente.
+  
   useEffect(() => {
+    setPedidoParaReinicioId(null);
     tentativaPedidoRef.current = null;
     setTentativaSalva(null);
     setTentativaCarregada(false);
@@ -954,6 +960,110 @@ export default function Checkout() {
   const total =
     subtotal + (freteSelecionado?.preco ?? 0);
 
+
+  async function iniciarNovaCompra() {
+    if (
+      envioPagamentoRef.current ||
+      criandoPedido ||
+      !usuario
+    ) {
+      return;
+    }
+
+    const tentativa = tentativaPedidoRef.current;
+
+    if (
+      !tentativa ||
+      tentativa.usuarioId !== usuario.id ||
+      !inteiroPositivo(tentativa.pedidoId) ||
+      pedidoParaReinicioId !== tentativa.pedidoId
+    ) {
+      return;
+    }
+
+    envioPagamentoRef.current = true;
+    setCriandoPedido(true);
+    setEtapaPagamento("CONFERINDO PEDIDO ANTERIOR...");
+
+    try {
+      const resposta = await fetch(
+        "/api/pedidos/reiniciar",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            pedidoId: tentativa.pedidoId,
+          }),
+        }
+      );
+
+      const dados = await lerRespostaCheckout(resposta);
+
+      if (!resposta.ok) {
+        throw new Error(
+          typeof dados.erro === "string"
+            ? dados.erro
+            : "Não foi possível encerrar o pedido anterior."
+        );
+      }
+
+      if (
+        dados.pedidoId !== tentativa.pedidoId ||
+        dados.podeIniciarNovaCompra !== true
+      ) {
+        throw new Error(
+          "Não foi possível confirmar o encerramento do pedido."
+        );
+      }
+
+      if (tentativaPedidoRef.current !== tentativa) {
+        throw new Error(
+          "Sua sessão mudou. Atualize a página para continuar."
+        );
+      }
+
+      // Só remove a referência após a confirmação do servidor.
+      // Se o armazenamento falhar, mantém a tentativa em memória.
+      sessionStorage.removeItem(
+        chaveArmazenamentoCheckout(tentativa.usuarioId)
+      );
+
+      tentativaPedidoRef.current = null;
+      setTentativaSalva(null);
+      setPedidoParaReinicioId(null);
+
+      cotacaoController.current?.abort();
+      cotacaoController.current = null;
+
+      setCotandoFrete(false);
+      setOpcoesFrete([]);
+      setFreteSelecionadoId(null);
+      setErroFrete("");
+
+      setMensagemPagamento(
+        "Pedido anterior encerrado. Revise sua sacola, calcule o frete novamente e continue a nova compra."
+      );
+    } catch (erro) {
+      setMensagemPagamento(
+        erro instanceof Error
+          ? erro.message
+          : "Não foi possível preparar a nova compra."
+      );
+    } finally {
+      envioPagamentoRef.current = false;
+      setCriandoPedido(false);
+      setEtapaPagamento("");
+    }
+  }
+
+
+
+
+
   /* =======================================================
      REGISTRAR OU RECUPERAR PEDIDO E INICIAR PAGAMENTO
      Reutiliza a mesma chave e o mesmo pedido nas repetições.
@@ -1188,6 +1298,16 @@ export default function Checkout() {
         );
 
       if (!respostaPagamento.ok) {
+        if (
+          respostaPagamento.status === 409 &&
+          [
+            "RESERVA_EXPIRADA",
+            "PEDIDO_INDISPONIVEL",
+          ].includes(String(pagamento.codigo))
+        ) {
+          setPedidoParaReinicioId(pedidoId);
+        }
+
         throw new Error(
           typeof pagamento.erro === "string"
             ? pagamento.erro
@@ -1999,6 +2119,26 @@ export default function Checkout() {
 
                 <span>→</span>
               </button>
+
+                            {pedidoParaReinicioId !== null &&
+                pedidoParaReinicioId === tentativaSalva?.pedidoId && (
+                  <button
+                    type="button"
+                    className="checkoutContinue"
+                    style={{ marginTop: 12 }}
+                    onClick={() => void iniciarNovaCompra()}
+                    disabled={
+                      criandoPedido ||
+                      carregandoUsuario ||
+                      !usuario ||
+                      !tentativaCarregada ||
+                      Boolean(erroRecuperacao)
+                    }
+                  >
+                    <span>INICIAR NOVA COMPRA</span>
+                    <span>→</span>
+                  </button>
+                )}
 
               {mensagemPagamento && (
                 <p

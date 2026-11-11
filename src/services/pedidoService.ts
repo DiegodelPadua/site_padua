@@ -32,6 +32,8 @@ import {
   buscarVariantesDoPedido,
   buscarPedidoPorChaveIdempotencia,
   registrarPedido,
+  encerrarPedidoExpirado,
+  ReinicioCheckoutError,
 } from "../repositories/pedidoRepository";
 
 // Função nativa do Node.js para gerar o SHA-256.
@@ -821,3 +823,33 @@ const pedidoPreparado = await prepararPedidoComFrete(
 }
 
 
+export async function prepararNovaCompra(
+  pedidoId: number,
+  usuarioId: number
+) {
+  if (
+    !inteiroPositivo(pedidoId) ||
+    !inteiroPositivo(usuarioId)
+  ) {
+    throw new PedidoServiceError(
+      "Identificação inválida.",
+      400
+    );
+  }
+
+  try {
+    return await encerrarPedidoExpirado(
+      pedidoId,
+      usuarioId
+    );
+  } catch (erro) {
+    if (erro instanceof ReinicioCheckoutError) {
+      throw new PedidoServiceError(
+        erro.message,
+        erro.status
+      );
+    }
+
+    throw erro;
+  }
+}

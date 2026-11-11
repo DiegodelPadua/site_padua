@@ -649,3 +649,229 @@ export async function buscarPedidosComReservaExpirada(
     take: quantidade,
   });
 }
+
+/* =========================================================
+   ENCERRAR RESERVA VENCIDA PARA NOVA COMPRA
+   =========================================================
+   Exige que o pedido pertença ao cliente autenticado.
+   Qualquer tentativa financeira bloqueia este fluxo.
+   O cancelamento e a devolução do estoque são atômicos.
+   ========================================================= */
+
+export class ReinicioCheckoutError extends Error {
+  constructor(
+    mensagem: string,
+    public readonly status: number = 409
+  ) {
+    super(mensagem);
+    this.name = "ReinicioCheckoutError";
+  }
+}
+
+export async function encerrarPedidoExpirado(
+  pedidoId: number,
+  usuarioId: number
+) {
+  if (
+    ![pedidoId, usuarioId].every(
+      (id) => Number.isSafeInteger(id) && id > 0
+    )
+  ) {
+    throw new ReinicioCheckoutError(
+      "Identificação inválida.",
+      400
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const linhas = await tx.$queryRaw<Array<{ id: number }>>`
+      SELECT id FROM pedidos
+      WHERE id = ${pedidoId} AND usuarioId = ${usuarioId}
+      FOR UPDATE
+    `;
+
+    if (linhas.length !== 1) {
+      throw new ReinicioCheckoutError(
+        "Pedido não encontrado para este cliente.",
+        404
+      );
+    }
+
+    const pedido = await tx.pedido.findUniqueOrThrow({
+      where: { id: pedidoId },
+      select: {
+        status: true,
+        reservaExpiraEm: true,
+        pagamentos: {
+          select: { id: true },
+          take: 1,
+        },
+        itens: {
+          select: {
+            varianteId: true,
+            quantidade: true,
+          },
+        },
+        movimentacoesEstoque: {
+          select: {
+            varianteId: true,
+            tipo: true,
+            quantidade: true,
+          },
+        },
+      },
+    });
+
+    // Qualquer tentativa financeira bloqueia este caminho.
+    // Não cancela cobranças externas.
+    if (pedido.pagamentos.length > 0) {
+      throw new ReinicioCheckoutError(
+        "Este pedido possui uma tentativa de pagamento. Sua situação precisa ser conferida antes de iniciar outra compra."
+      );
+    }
+
+    const jaEncerrado =
+      pedido.status === StatusPedido.CANCELADO;
+
+    if (
+      !jaEncerrado &&
+      (
+        pedido.status !== StatusPedido.AGUARDANDO_PAGAMENTO ||
+        !pedido.reservaExpiraEm ||
+        pedido.reservaExpiraEm.getTime() > Date.now()
+      )
+    ) {
+      throw new ReinicioCheckoutError(
+        "Este pedido não pode ser reiniciado por vencimento da reserva."
+      );
+    }
+
+    const itens = new Map<number, number>();
+    const reservas = new Map<number, number>();
+    const liberacoes = new Map<number, number>();
+
+    for (const item of pedido.itens) {
+      if (
+        item.varianteId === null ||
+        item.quantidade <= 0
+      ) {
+        throw new ReinicioCheckoutError(
+          "Os itens do pedido exigem revisão."
+        );
+      }
+
+      itens.set(
+        item.varianteId,
+        (itens.get(item.varianteId) ?? 0) + item.quantidade
+      );
+    }
+
+    for (const movimento of pedido.movimentacoesEstoque) {
+      if (
+        movimento.quantidade <= 0 ||
+        !itens.has(movimento.varianteId)
+      ) {
+        throw new ReinicioCheckoutError(
+          "A reserva de estoque exige revisão."
+        );
+      }
+
+      const mapa =
+        movimento.tipo === TipoMovimentacaoEstoque.RESERVA
+          ? reservas
+          : movimento.tipo ===
+              TipoMovimentacaoEstoque.LIBERACAO_RESERVA
+            ? liberacoes
+            : null;
+
+      if (!mapa) {
+        throw new ReinicioCheckoutError(
+          "As movimentações do pedido exigem revisão."
+        );
+      }
+
+      mapa.set(
+        movimento.varianteId,
+        (mapa.get(movimento.varianteId) ?? 0) +
+          movimento.quantidade
+      );
+    }
+
+    if (
+      itens.size === 0 ||
+      reservas.size !== itens.size
+    ) {
+      throw new ReinicioCheckoutError(
+        "Não foi possível conferir a reserva original."
+      );
+    }
+
+    for (const [varianteId, quantidade] of itens) {
+      if (
+        reservas.get(varianteId) !== quantidade ||
+        (liberacoes.get(varianteId) ?? 0) !==
+          (jaEncerrado ? quantidade : 0)
+      ) {
+        throw new ReinicioCheckoutError(
+          "A reserva e suas liberações exigem revisão."
+        );
+      }
+    }
+
+    // Um reenvio após perda da resposta não devolve estoque novamente.
+    if (!jaEncerrado) {
+      await tx.pedido.update({
+        where: { id: pedidoId },
+        data: {
+          status: StatusPedido.CANCELADO,
+        },
+      });
+
+      // Ordem estável para atualizar produtos compartilhados entre pedidos.
+      const itensOrdenados = [...itens].sort(
+        (a, b) => a[0] - b[0]
+      );
+
+      for (const [varianteId, quantidade] of itensOrdenados) {
+        const variante = await tx.varianteProduto.update({
+          where: { id: varianteId },
+          data: {
+            quantidade: {
+              increment: quantidade,
+            },
+          },
+          select: {
+            quantidade: true,
+          },
+        });
+
+        await tx.movimentacaoEstoque.create({
+          data: {
+            pedidoId,
+            varianteId,
+            quantidade,
+            tipo: TipoMovimentacaoEstoque.LIBERACAO_RESERVA,
+            saldoAnterior: variante.quantidade - quantidade,
+            saldoPosterior: variante.quantidade,
+            motivo:
+              "Reserva vencida encerrada pelo cliente para iniciar nova compra.",
+          },
+        });
+      }
+
+      await tx.historicoPedido.create({
+        data: {
+          pedidoId,
+          status: StatusPedido.CANCELADO,
+          descricao:
+            "Reserva vencida encerrada pelo cliente, sem tentativa de pagamento. Estoque devolvido.",
+        },
+      });
+    }
+
+    return {
+      pedidoId,
+      podeIniciarNovaCompra: true,
+    };
+  });
+}
