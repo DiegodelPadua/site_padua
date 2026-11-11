@@ -34,6 +34,7 @@ import {
   registrarPedido,
   encerrarPedidoExpirado,
   ReinicioCheckoutError,
+  consultarPedidosDoCliente,
 } from "../repositories/pedidoRepository";
 
 // Função nativa do Node.js para gerar o SHA-256.
@@ -852,4 +853,30 @@ export async function prepararNovaCompra(
 
     throw erro;
   }
+}
+
+export async function listarPedidosDoCliente(
+  usuarioId: number
+) {
+  if (!inteiroPositivo(usuarioId)) {
+    throw new PedidoServiceError(
+      "Cliente inválido.",
+      400
+    );
+  }
+
+  const pedidos = await consultarPedidosDoCliente(
+    usuarioId
+  );
+
+  return pedidos.map((pedido) => ({
+    id: pedido.id,
+    status: pedido.status,
+    criadoEm: pedido.criadoEm.toISOString(),
+    valorTotal: pedido.valorTotal.toFixed(2),
+    ultimoPagamento:
+      pedido.pagamentos[0]?.status ?? null,
+    itens: pedido.itens,
+    entrega: pedido.entrega,
+  }));
 }

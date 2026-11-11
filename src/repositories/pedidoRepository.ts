@@ -875,3 +875,63 @@ export async function encerrarPedidoExpirado(
     };
   });
 }
+
+/* =========================================================
+   CONSULTAR PEDIDOS DO CLIENTE
+   =========================================================
+   Retorna somente pedidos do usuário autenticado.
+   Não altera pedidos, pagamentos ou estoque.
+   ========================================================= */
+
+export async function consultarPedidosDoCliente(
+  usuarioId: number
+) {
+  if (
+    !Number.isSafeInteger(usuarioId) ||
+    usuarioId <= 0
+  ) {
+    throw new Error("Cliente inválido.");
+  }
+
+  return prisma.pedido.findMany({
+    where: {
+      usuarioId,
+    },
+    orderBy: {
+      id: "desc",
+    },
+    take: 20,
+    select: {
+      id: true,
+      status: true,
+      criadoEm: true,
+      valorTotal: true,
+
+      itens: {
+        select: {
+          nomeProduto: true,
+          tamanho: true,
+          cor: true,
+          quantidade: true,
+        },
+      },
+
+      pagamentos: {
+        orderBy: {
+          id: "desc",
+        },
+        take: 1,
+        select: {
+          status: true,
+        },
+      },
+
+      entrega: {
+        select: {
+          transportadora: true,
+          codigoRastreamento: true,
+        },
+      },
+    },
+  });
+}

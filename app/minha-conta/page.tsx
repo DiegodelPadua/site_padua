@@ -7,6 +7,8 @@ import Link from "next/link";
 
 import "./minha-conta.css";
 
+import MeusPedidos from "./MeusPedidos";
+
 /* =========================================================
    TIPOS DO USUÁRIO
    ========================================================= */
@@ -710,14 +712,7 @@ async function salvarNovaSenha(
 )}
 
 
-          <div className="accountSectionTitle accountOrders">
-            <span>MEUS PEDIDOS</span>
-            <h2>Histórico de compras.</h2>
-            <p>
-              O acompanhamento de pedidos estará disponível
-              quando integrarmos o checkout ao banco de dados.
-            </p>
-          </div>
+          <MeusPedidos />
 
           {/* =================================================
               LOGOUT
