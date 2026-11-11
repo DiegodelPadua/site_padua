@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -71,6 +70,191 @@ function formatarMoeda(valor: number) {
 
 function somenteNumeros(valor: string) {
   return valor.replace(/\D/g, "");
+}
+
+/* A tentativa guarda apenas IDs, quantidades e referências da compra.
+   Não contém token, senha, endereço completo ou link de pagamento. */
+type DadosPedidoCheckout = {
+  enderecoId: number;
+  freteId: number;
+  itens: Array<{
+    variantId: number;
+    quantity: number;
+  }>;
+};
+
+type TentativaCheckout = {
+  versao: 1;
+  usuarioId: number;
+  assinatura: string;
+  chave: string;
+  dados: DadosPedidoCheckout;
+  pedidoId: number | null;
+  valorTotal: string | null;
+  revisarDados: boolean;
+};
+
+function inteiroPositivo(valor: unknown): valor is number {
+  return (
+    typeof valor === "number" &&
+    Number.isSafeInteger(valor) &&
+    valor > 0
+  );
+}
+
+function chaveArmazenamentoCheckout(usuarioId: number) {
+  return `padua_checkout_tentativa_${usuarioId}`;
+}
+
+function assinaturaCheckout(
+  usuarioId: number,
+  dados: DadosPedidoCheckout
+) {
+  return JSON.stringify({
+    usuarioId,
+    enderecoId: dados.enderecoId,
+    freteId: dados.freteId,
+    itens: [...dados.itens].sort(
+      (a, b) => a.variantId - b.variantId
+    ),
+  });
+}
+
+// Confere o conteúdo salvo antes de usá-lo para recuperar uma tentativa.
+// O servidor continua responsável por autorização, preços e idempotência.
+function lerTentativaCheckout(
+  texto: string,
+  usuarioId: number
+): TentativaCheckout {
+  const valor: unknown = JSON.parse(texto);
+
+  if (
+    !valor ||
+    typeof valor !== "object" ||
+    Array.isArray(valor)
+  ) {
+    throw new Error("Tentativa salva inválida.");
+  }
+
+  const tentativa = valor as Record<string, unknown>;
+  const dados =
+    tentativa.dados as DadosPedidoCheckout | undefined;
+
+  const formatoUUID =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  if (
+    tentativa.versao !== 1 ||
+    tentativa.usuarioId !== usuarioId ||
+    typeof tentativa.revisarDados !== "boolean" ||
+    typeof tentativa.chave !== "string" ||
+    !formatoUUID.test(tentativa.chave) ||
+    !dados ||
+    typeof dados !== "object" ||
+    Array.isArray(dados) ||
+    !inteiroPositivo(dados.enderecoId) ||
+    !inteiroPositivo(dados.freteId) ||
+    !Array.isArray(dados.itens) ||
+    dados.itens.length === 0 ||
+    dados.itens.some(
+      (item) =>
+        !item ||
+        !inteiroPositivo(item.variantId) ||
+        !inteiroPositivo(item.quantity)
+    ) ||
+    tentativa.assinatura !==
+      assinaturaCheckout(usuarioId, dados) ||
+    (
+      tentativa.pedidoId !== null &&
+      !inteiroPositivo(tentativa.pedidoId)
+    ) ||
+    (
+      tentativa.valorTotal !== null &&
+      (
+        typeof tentativa.valorTotal !== "string" ||
+        !/^\d+(\.\d{1,2})?$/.test(tentativa.valorTotal) ||
+        !Number.isFinite(Number(tentativa.valorTotal)) ||
+        Number(tentativa.valorTotal) <= 0
+      )
+    ) ||
+    (
+      tentativa.pedidoId !== null &&
+      tentativa.valorTotal === null
+    )
+  ) {
+    throw new Error("Tentativa salva inválida.");
+  }
+
+  return tentativa as TentativaCheckout;
+}
+
+async function lerRespostaCheckout(
+  resposta: Response
+): Promise<Record<string, unknown>> {
+  let dados: unknown;
+
+  try {
+    dados = await resposta.json();
+  } catch {
+    throw new Error(
+      "Não foi possível ler a resposta. Continue a mesma tentativa para verificar o pedido."
+    );
+  }
+
+  if (
+    !dados ||
+    typeof dados !== "object" ||
+    Array.isArray(dados)
+  ) {
+    throw new Error(
+      "Resposta inválida. Continue a mesma tentativa para verificar o pedido."
+    );
+  }
+
+  return dados as Record<string, unknown>;
+}
+
+// Repete no navegador a verificação do destino, antes de sair da loja.
+function validarDestinoPagamento(
+  checkoutUrl: unknown
+): string {
+  if (typeof checkoutUrl !== "string") {
+    throw new Error(
+      "O pagamento não retornou um link válido."
+    );
+  }
+
+  let url: URL;
+
+  try {
+    url = new URL(checkoutUrl);
+  } catch {
+    throw new Error(
+      "O pagamento retornou um destino inválido."
+    );
+  }
+
+  const ids = url.searchParams.getAll("order_id");
+
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.hash ||
+    !(
+      url.hostname === "mercadopago.com.br" ||
+      url.hostname.endsWith(".mercadopago.com.br")
+    ) ||
+    ids.length !== 1 ||
+    !/^ORD[A-Za-z0-9_-]{1,100}$/.test(ids[0])
+  ) {
+    throw new Error(
+      "O pagamento retornou um destino inválido."
+    );
+  }
+
+  return url.toString();
 }
 
 export default function Checkout() {
@@ -208,14 +392,79 @@ export default function Checkout() {
   const [mensagemPagamento, setMensagemPagamento] =
     useState("");
 
-    // Indica quando o pedido está sendo enviado ao servidor.
-  const [criandoPedido, setCriandoPedido] = useState(false);
+  // Indica quando o pedido ou o pagamento está sendo processado.
+  const [criandoPedido, setCriandoPedido] =
+    useState(false);
 
-  // Mantém a identificação da tentativa para evitar duplicidade.
-  const tentativaPedidoRef = useRef<{
-    assinatura: string;
-    chave: string;
-  } | null>(null);
+  // A ref bloqueia dois cliques antes de o React atualizar a interface.
+  const envioPagamentoRef = useRef(false);
+
+  const tentativaPedidoRef =
+    useRef<TentativaCheckout | null>(null);
+
+  const [tentativaSalva, setTentativaSalva] =
+    useState<TentativaCheckout | null>(null);
+
+  const [tentativaCarregada, setTentativaCarregada] =
+    useState(false);
+
+  const [erroRecuperacao, setErroRecuperacao] =
+    useState("");
+
+  const [etapaPagamento, setEtapaPagamento] =
+    useState("");
+
+  // Recupera a tentativa da mesma aba sem enviar pedidos automaticamente.
+  useEffect(() => {
+    tentativaPedidoRef.current = null;
+    setTentativaSalva(null);
+    setTentativaCarregada(false);
+    setErroRecuperacao("");
+
+    if (!usuario) return;
+
+    try {
+      const texto = sessionStorage.getItem(
+        chaveArmazenamentoCheckout(usuario.id)
+      );
+
+      if (texto !== null) {
+        const tentativa = lerTentativaCheckout(
+          texto,
+          usuario.id
+        );
+
+        tentativaPedidoRef.current = tentativa;
+        setTentativaSalva(tentativa);
+      }
+    } catch {
+      // Não apaga uma referência que pode corresponder a um pedido existente.
+      setErroRecuperacao(
+        "Não foi possível recuperar sua tentativa de compra. Consulte seus pedidos na Minha Conta antes de continuar."
+      );
+    } finally {
+      setTentativaCarregada(true);
+    }
+  }, [usuario?.id]);
+
+  function salvarTentativaCheckout(
+    tentativa: TentativaCheckout
+  ) {
+    // Mantém também o ID em memória se houver falha ao atualizar o armazenamento.
+    tentativaPedidoRef.current = tentativa;
+    setTentativaSalva(tentativa);
+
+    try {
+      sessionStorage.setItem(
+        chaveArmazenamentoCheckout(tentativa.usuarioId),
+        JSON.stringify(tentativa)
+      );
+    } catch {
+      throw new Error(
+        "Não foi possível guardar a referência da compra nesta aba. Verifique o armazenamento do navegador antes de continuar."
+      );
+    }
+  }
 
   const cotacaoController =
     useRef<AbortController | null>(null);
@@ -263,7 +512,9 @@ export default function Checkout() {
     setMensagemEndereco("");
   }
 
-  function preencherEndereco(endereco: EnderecoCheckout) {
+  function preencherEndereco(
+    endereco: EnderecoCheckout
+  ) {
     consultaCepController.current?.abort();
     consultaCepController.current = null;
 
@@ -704,134 +955,289 @@ export default function Checkout() {
     subtotal + (freteSelecionado?.preco ?? 0);
 
   /* =======================================================
-     CONTINUAR PARA PAGAMENTO
-     Ainda não cria pedido nem cobrança.
+     REGISTRAR OU RECUPERAR PEDIDO E INICIAR PAGAMENTO
+     Reutiliza a mesma chave e o mesmo pedido nas repetições.
+     O servidor define os valores e a situação financeira.
      ======================================================= */
 
-/* =========================================================
-   CRIAR PEDIDO — PÁDUA CULTURE
-
-   Valida o checkout e envia os dados para a API.
-   A API recalcula preços, frete e reserva o estoque.
-
-   IMPORTANTE:
-   Esta etapa NÃO inicia uma cobrança.
-   ========================================================= */
-
   async function continuarParaPagamento() {
-    // Impede envios simultâneos.
-    if (criandoPedido) return;
+    if (envioPagamentoRef.current || criandoPedido) return;
 
     setMensagemPagamento("");
 
     if (!usuario) {
-      setMensagemPagamento("Entre na sua conta para continuar.");
-      return;
-    }
-
-    if (items.length === 0) {
-      setMensagemPagamento("Adicione produtos à sacola.");
-      return;
-    }
-
-    if (
-      !/^\d{8}$/.test(cepCotacao) ||
-      !dadosEntrega.endereco.trim() ||
-      !dadosEntrega.numero.trim() ||
-      !dadosEntrega.bairro.trim() ||
-      !dadosEntrega.cidade.trim() ||
-      !/^[A-Z]{2}$/.test(dadosEntrega.estado.trim())
-    ) {
-      setMensagemPagamento("Complete o endereço de entrega.");
-      return;
-    }
-
-    if (enderecoSelecionadoId === null) {
       setMensagemPagamento(
-        "Salve ou selecione um endereço de entrega."
+        "Entre na sua conta para continuar."
       );
       return;
     }
 
-    if (!freteSelecionado) {
+    if (!tentativaCarregada || erroRecuperacao) {
       setMensagemPagamento(
-        "Calcule o frete e selecione uma opção de entrega."
+        erroRecuperacao ||
+          "Aguarde a recuperação da tentativa de compra."
       );
       return;
     }
 
-    // Envia apenas os identificadores e as quantidades.
-    // Preços exibidos no navegador não são valores oficiais.
-    const itensPedido = items.map((item) => ({
-      variantId: item.variantId,
-      quantity: item.quantity,
-    }));
-
-    const assinatura = JSON.stringify({
-      usuarioId: usuario.id,
-      enderecoId: enderecoSelecionadoId,
-      freteId: freteSelecionado.id,
-      itens: [...itensPedido].sort(
-        (a, b) => Number(a.variantId) - Number(b.variantId)
-      ),
-    });
-
-    // Reutiliza a chave quando o cliente repete a mesma
-    // tentativa de compra, inclusive após falha de rede.
-    if (
-      !tentativaPedidoRef.current ||
-      tentativaPedidoRef.current.assinatura !== assinatura
-    ) {
-      tentativaPedidoRef.current = {
-        assinatura,
-        chave: crypto.randomUUID(),
-      };
-    }
-
+    envioPagamentoRef.current = true;
     setCriandoPedido(true);
 
     try {
-      const resposta = await fetch("/api/pedidos", {
-        method: "POST",
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          enderecoId: enderecoSelecionadoId,
-          freteId: freteSelecionado.id,
-          itens: itensPedido,
-          chaveIdempotencia: tentativaPedidoRef.current.chave,
-        }),
-      });
+      let tentativa = tentativaPedidoRef.current;
 
-      const resultado = await resposta.json();
-
-      if (!resposta.ok) {
+      if (
+        tentativa &&
+        tentativa.usuarioId !== usuario.id
+      ) {
         throw new Error(
-          resultado.erro ??
-            "Não foi possível registrar seu pedido."
+          "Aguarde a atualização da sua sessão antes de continuar."
         );
       }
 
-      // O pedido existe, mas ainda não há pagamento.
-      setMensagemPagamento(
-        `Pedido #${resultado.pedido.id} registrado com sucesso! ` +
-        `Total confirmado: ${formatarMoeda(
-          Number(resultado.pedido.valorTotal)
-        )}. ` +
-        "O pagamento ainda não está disponível. " +
-        "Nenhuma cobrança foi realizada."
+      // Uma tentativa salva é retomada com os dados originais, mesmo se
+      // endereço, cotação ou sacola ainda estiverem carregando após atualizar.
+      if (!tentativa || tentativa.revisarDados) {
+        if (items.length === 0) {
+          throw new Error(
+            "Adicione produtos à sacola."
+          );
+        }
+
+        if (
+          !/^\d{8}$/.test(cepCotacao) ||
+          !dadosEntrega.endereco.trim() ||
+          !dadosEntrega.numero.trim() ||
+          !dadosEntrega.bairro.trim() ||
+          !dadosEntrega.cidade.trim() ||
+          !/^[A-Z]{2}$/.test(
+            dadosEntrega.estado.trim()
+          )
+        ) {
+          throw new Error(
+            "Complete o endereço de entrega."
+          );
+        }
+
+        if (enderecoSelecionadoId === null) {
+          throw new Error(
+            "Salve ou selecione um endereço de entrega."
+          );
+        }
+
+        if (!freteSelecionado) {
+          throw new Error(
+            "Calcule o frete e selecione uma opção de entrega."
+          );
+        }
+
+        const itensPedido:
+          DadosPedidoCheckout["itens"] = [];
+
+        for (const item of items) {
+          if (
+            !inteiroPositivo(item.variantId) ||
+            !inteiroPositivo(item.quantity)
+          ) {
+            throw new Error(
+              "Existem produtos inválidos na sacola. Confira os itens antes de continuar."
+            );
+          }
+
+          itensPedido.push({
+            variantId: item.variantId,
+            quantity: item.quantity,
+          });
+        }
+
+        const dados: DadosPedidoCheckout = {
+          enderecoId: enderecoSelecionadoId,
+          freteId: freteSelecionado.id,
+          itens: itensPedido,
+        };
+
+        tentativa = {
+          versao: 1,
+          usuarioId: usuario.id,
+          assinatura: assinaturaCheckout(
+            usuario.id,
+            dados
+          ),
+
+          // Uma revisão mantém a chave: se já existir pedido, o servidor
+          // recusará dados incompatíveis em vez de criar outro.
+          chave:
+            tentativa?.chave ??
+            crypto.randomUUID(),
+
+          dados,
+          pedidoId: null,
+          valorTotal: null,
+          revisarDados: false,
+        };
+      }
+
+      // Persiste a chave antes de qualquer POST, inclusive após erro de rede.
+      salvarTentativaCheckout(tentativa);
+
+      if (tentativa.pedidoId === null) {
+        setEtapaPagamento(
+          "REGISTRANDO PEDIDO..."
+        );
+
+        const resposta = await fetch(
+          "/api/pedidos",
+          {
+            method: "POST",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ...tentativa.dados,
+              chaveIdempotencia: tentativa.chave,
+            }),
+          }
+        );
+
+        const resultado =
+          await lerRespostaCheckout(resposta);
+
+        if (!resposta.ok) {
+          // Permite corrigir dados recusados, preservando a mesma chave.
+          // Falhas de rede ou erro interno continuam usando o corpo original.
+          if (
+            [400, 409, 422].includes(
+              resposta.status
+            )
+          ) {
+            tentativa = {
+              ...tentativa,
+              revisarDados: true,
+            };
+
+            salvarTentativaCheckout(tentativa);
+          }
+
+          throw new Error(
+            typeof resultado.erro === "string"
+              ? resultado.erro
+              : "Não foi possível registrar o pedido."
+          );
+        }
+
+        const pedido = resultado.pedido as
+          | Record<string, unknown>
+          | undefined;
+
+        if (
+          !pedido ||
+          !inteiroPositivo(pedido.id) ||
+          typeof pedido.valorTotal !== "string" ||
+          !/^\d+(\.\d{1,2})?$/.test(
+            pedido.valorTotal
+          ) ||
+          !Number.isFinite(
+            Number(pedido.valorTotal)
+          ) ||
+          Number(pedido.valorTotal) <= 0
+        ) {
+          throw new Error(
+            "A resposta do pedido está incompleta. Continue a mesma tentativa para verificá-lo."
+          );
+        }
+
+        tentativa = {
+          ...tentativa,
+          pedidoId: pedido.id,
+          valorTotal: pedido.valorTotal,
+        };
+
+        salvarTentativaCheckout(tentativa);
+      }
+
+      const pedidoId = tentativa.pedidoId;
+
+      if (!inteiroPositivo(pedidoId)) {
+        throw new Error(
+          "Pedido inválido para pagamento."
+        );
+      }
+
+      setEtapaPagamento(
+        "PREPARANDO PAGAMENTO..."
       );
-    } catch (erro) {
+
+      const respostaPagamento = await fetch(
+        "/api/pagamentos/iniciar",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ pedidoId }),
+        }
+      );
+
+      const pagamento =
+        await lerRespostaCheckout(
+          respostaPagamento
+        );
+
+      if (!respostaPagamento.ok) {
+        throw new Error(
+          typeof pagamento.erro === "string"
+            ? pagamento.erro
+            : "Não foi possível iniciar o pagamento."
+        );
+      }
+
+      if (
+        pagamento.pedidoId !== pedidoId ||
+        !inteiroPositivo(pagamento.pagamentoId)
+      ) {
+        throw new Error(
+          "A resposta do pagamento não corresponde ao pedido."
+        );
+      }
+
+      const destino = validarDestinoPagamento(
+        pagamento.checkoutUrl
+      );
+
+      setEtapaPagamento(
+        "REDIRECIONANDO..."
+      );
+
       setMensagemPagamento(
+        `Pedido #${pedidoId}: abrindo o checkout do Mercado Pago.`
+      );
+
+      // A referência permanece salva: voltar ou atualizar não cria outro pedido.
+      // A confirmação financeira será feita pelo servidor, nunca por esta tela.
+      window.location.assign(destino);
+    } catch (erro) {
+      const referencia =
+        tentativaPedidoRef.current?.pedidoId;
+
+      const mensagem =
         erro instanceof Error
           ? erro.message
-          : "Não foi possível registrar o pedido."
+          : "Não foi possível continuar o pagamento.";
+
+      setMensagemPagamento(
+        referencia
+          ? `Pedido #${referencia}: ${mensagem}`
+          : mensagem
       );
     } finally {
+      // Se a navegação falhar ou o cliente voltar, poderá retomar o mesmo pedido.
+      envioPagamentoRef.current = false;
       setCriandoPedido(false);
+      setEtapaPagamento("");
     }
   }
 
@@ -842,11 +1248,17 @@ export default function Checkout() {
   return (
     <main className="checkoutPage">
       <header className="checkoutHeader">
-        <Link href="/" className="checkoutLogo">
+        <Link
+          href="/"
+          className="checkoutLogo"
+        >
           PÁDUA
         </Link>
 
-        <Link href="/" className="checkoutBack">
+        <Link
+          href="/"
+          className="checkoutBack"
+        >
           ← CONTINUAR COMPRANDO
         </Link>
       </header>
@@ -882,7 +1294,9 @@ export default function Checkout() {
             )}
 
             {erroUsuario && (
-              <p role="alert">{erroUsuario}</p>
+              <p role="alert">
+                {erroUsuario}
+              </p>
             )}
 
             {!carregandoUsuario &&
@@ -938,79 +1352,96 @@ export default function Checkout() {
               </p>
             )}
 
+            {/* =====================================================
+                ENDEREÇOS CADASTRADOS — PÁDUA CULTURE
+                ===================================================== */}
 
-          {/* =====================================================
-              ENDEREÇOS CADASTRADOS — PÁDUA CULTURE
-              ===================================================== */}
+            {!carregandoEnderecos &&
+              enderecos.length > 0 && (
+                <div className="checkoutSavedAddresses">
+                  <div className="checkoutAddressHeading">
+                    <h3>
+                      SEUS ENDEREÇOS CADASTRADOS
+                    </h3>
+                    <span>
+                      SELECIONE ONDE DESEJA RECEBER
+                    </span>
+                  </div>
 
-          {!carregandoEnderecos && enderecos.length > 0 && (
-            <div className="checkoutSavedAddresses">
-              <div className="checkoutAddressHeading">
-                <h3>SEUS ENDEREÇOS CADASTRADOS</h3>
-                <span>SELECIONE ONDE DESEJA RECEBER</span>
-              </div>
+                  <div className="checkoutAddressList">
+                    {enderecos.map((endereco) => {
+                      const selecionado =
+                        enderecoSelecionadoId ===
+                        endereco.id;
 
-              <div className="checkoutAddressList">
-                {enderecos.map((endereco) => {
-                  const selecionado =
-                    enderecoSelecionadoId === endereco.id;
-
-                  return (
-                    <button
-                      key={endereco.id}
-                      type="button"
-                      className={`checkoutAddressCard ${
-                        selecionado ? "isSelected" : ""
-                      }`}
-                      onClick={() => preencherEndereco(endereco)}
-                      aria-pressed={selecionado}
-                    >
-                      {/* Indicador visual de seleção */}
-                      <span
-                        className="checkoutAddressRadio"
-                        aria-hidden="true"
-                      >
-                        <span />
-                      </span>
-
-                      {/* Dados do endereço */}
-                      <span className="checkoutAddressContent">
-                        <span className="checkoutAddressTop">
-                          <span className="checkoutAddressName">
-                            {endereco.apelido || "ENDEREÇO DE ENTREGA"}
+                      return (
+                        <button
+                          key={endereco.id}
+                          type="button"
+                          className={`checkoutAddressCard ${
+                            selecionado
+                              ? "isSelected"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            preencherEndereco(
+                              endereco
+                            )
+                          }
+                          aria-pressed={
+                            selecionado
+                          }
+                        >
+                          {/* Indicador visual de seleção */}
+                          <span
+                            className="checkoutAddressRadio"
+                            aria-hidden="true"
+                          >
+                            <span />
                           </span>
 
-                          {endereco.principal && (
-                            <span className="checkoutAddressBadge">
-                              PRINCIPAL
+                          {/* Dados do endereço */}
+                          <span className="checkoutAddressContent">
+                            <span className="checkoutAddressTop">
+                              <span className="checkoutAddressName">
+                                {endereco.apelido ||
+                                  "ENDEREÇO DE ENTREGA"}
+                              </span>
+
+                              {endereco.principal && (
+                                <span className="checkoutAddressBadge">
+                                  PRINCIPAL
+                                </span>
+                              )}
                             </span>
-                          )}
-                        </span>
 
-                        <strong className="checkoutAddressStreet">
-                          {endereco.logradouro}, {endereco.numero}
-                        </strong>
+                            <strong className="checkoutAddressStreet">
+                              {endereco.logradouro},{" "}
+                              {endereco.numero}
+                            </strong>
 
-                        <span className="checkoutAddressDetails">
-                          {endereco.bairro} · {endereco.cidade}/
-                          {endereco.estado}
-                        </span>
+                            <span className="checkoutAddressDetails">
+                              {endereco.bairro} ·{" "}
+                              {endereco.cidade}/
+                              {endereco.estado}
+                            </span>
 
-                        <span className="checkoutAddressCep">
-                          CEP {endereco.cep}
-                        </span>
-                      </span>
+                            <span className="checkoutAddressCep">
+                              CEP {endereco.cep}
+                            </span>
+                          </span>
 
-                      <span className="checkoutAddressStatus">
-                        {selecionado ? "SELECIONADO" : "SELECIONAR"}
-                      </span>
-                    </button>
-                  );
-                })}
-             
+                          <span className="checkoutAddressStatus">
+                            {selecionado
+                              ? "SELECIONADO"
+                              : "SELECIONAR"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* =====================================================
                 FORMULÁRIO DE ENDEREÇO
@@ -1056,7 +1487,9 @@ export default function Checkout() {
                   maxLength={9}
                   value={dadosEntrega.cep}
                   onChange={(event) =>
-                    alterarCEP(event.target.value)
+                    alterarCEP(
+                      event.target.value
+                    )
                   }
                 />
               </label>
@@ -1201,7 +1634,9 @@ export default function Checkout() {
             <button
               type="button"
               className="checkoutContinue"
-              onClick={() => void salvarEndereco()}
+              onClick={() =>
+                void salvarEndereco()
+              }
               disabled={
                 salvandoEndereco ||
                 carregandoUsuario ||
@@ -1223,10 +1658,54 @@ export default function Checkout() {
         <aside className="checkoutSummary">
           <div className="checkoutSummaryHeader">
             <span>SEU PEDIDO</span>
-            <span>{quantidadeItens} ITENS</span>
+
+            <span>
+              {tentativaSalva &&
+              !tentativaSalva.revisarDados
+                ? tentativaSalva.dados.itens.reduce(
+                    (soma, item) =>
+                      soma + item.quantity,
+                    0
+                  )
+                : quantidadeItens}{" "}
+              ITENS
+            </span>
           </div>
 
-          {items.length === 0 ? (
+          {erroRecuperacao && (
+            <p
+              role="alert"
+              style={{
+                marginBottom: 16,
+                lineHeight: 1.5,
+              }}
+            >
+              {erroRecuperacao}{" "}
+              <Link href="/minha-conta">
+                ABRIR MINHA CONTA
+              </Link>
+            </p>
+          )}
+
+          {tentativaSalva && (
+            <div
+              style={{
+                padding: "16px 0",
+                lineHeight: 1.5,
+              }}
+            >
+              <p>
+                {tentativaSalva.revisarDados
+                  ? "Revise os dados abaixo e tente continuar novamente."
+                  : tentativaSalva.pedidoId
+                    ? `Pedido #${tentativaSalva.pedidoId} registrado. O pagamento usará os itens e a entrega desse pedido.`
+                    : "Você já iniciou uma tentativa de compra. Ao continuar, verificaremos o mesmo pedido com os dados originais."}
+              </p>
+            </div>
+          )}
+
+          {items.length === 0 &&
+          !tentativaSalva ? (
             <div className="checkoutEmpty">
               <p>SUA SACOLA ESTÁ VAZIA.</p>
 
@@ -1236,207 +1715,286 @@ export default function Checkout() {
             </div>
           ) : (
             <>
-              {/* PRODUTOS */}
+              {!tentativaSalva ||
+              tentativaSalva.revisarDados ? (
+                <>
+                  {/* PRODUTOS */}
 
-              <div className="checkoutItems">
-                {items.map((item) => (
+                  <div className="checkoutItems">
+                    {items.map((item) => (
+                      <div
+                        className="checkoutItem"
+                        key={item.id}
+                      >
+                        <div className="checkoutItemImage">
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                          />
+
+                          <span>
+                            {item.quantity}
+                          </span>
+                        </div>
+
+                        <div className="checkoutItemInfo">
+                          <div>
+                            <h3>{item.name}</h3>
+
+                            <p>
+                              {item.color} /{" "}
+                              {item.size}
+                            </p>
+                          </div>
+
+                          <strong>
+                            {formatarMoeda(
+                              item.price *
+                                item.quantity
+                            )}
+                          </strong>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* =========================================
+                      CÁLCULO DE FRETE
+                      ========================================= */}
+
                   <div
-                    className="checkoutItem"
-                    key={item.id}
+                    style={{
+                      padding: "18px 0",
+                      borderTop:
+                        "1px solid #444",
+                      borderBottom:
+                        "1px solid #444",
+                    }}
                   >
-                    <div className="checkoutItemImage">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                      />
-                      <span>{item.quantity}</span>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        marginBottom: 12,
+                      }}
+                    >
+                      ENTREGA — CEP{" "}
+                      {dadosEntrega.cep ||
+                        "NÃO INFORMADO"}
+                    </p>
+
+                    <button
+                      type="button"
+                      className="checkoutContinue"
+                      onClick={() =>
+                        void calcularFrete()
+                      }
+                      disabled={
+                        cotandoFrete ||
+                        carregandoUsuario
+                      }
+                    >
+                      {cotandoFrete
+                        ? "CALCULANDO FRETE..."
+                        : "CALCULAR FRETE"}
+                    </button>
+
+                    {erroFrete && (
+                      <p
+                        role="alert"
+                        style={{
+                          color: "#fca5a5",
+                          marginTop: 12,
+                          fontSize: 13,
+                        }}
+                      >
+                        {erroFrete}
+                      </p>
+                    )}
+
+                    {/* OPÇÕES RETORNADAS PELA API */}
+
+                    {opcoesFrete.length > 0 && (
+                      <fieldset
+                        style={{
+                          border: 0,
+                          padding: 0,
+                          margin:
+                            "16px 0 0",
+                        }}
+                      >
+                        <legend
+                          style={{
+                            fontSize: 12,
+                            marginBottom: 10,
+                          }}
+                        >
+                          ESCOLHA A ENTREGA
+                        </legend>
+
+                        {opcoesFrete.map(
+                          (opcao) => (
+                            <label
+                              key={opcao.id}
+                              style={{
+                                display:
+                                  "flex",
+                                gap: 10,
+                                alignItems:
+                                  "center",
+                                padding:
+                                  "10px 0",
+                                cursor:
+                                  "pointer",
+                                fontSize: 13,
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name="frete"
+                                checked={
+                                  freteSelecionadoId ===
+                                  opcao.id
+                                }
+                                onChange={() => {
+                                  setFreteSelecionadoId(
+                                    opcao.id
+                                  );
+                                  setMensagemPagamento(
+                                    ""
+                                  );
+                                }}
+                              />
+
+                              <span
+                                style={{
+                                  flex: 1,
+                                }}
+                              >
+                                {
+                                  opcao.transportadora
+                                }
+                                {" — "}
+                                {opcao.nome}
+
+                                {opcao.prazoDias !==
+                                null
+                                  ? ` · ${opcao.prazoDias} dias`
+                                  : ""}
+                              </span>
+
+                              <strong>
+                                {formatarMoeda(
+                                  opcao.preco
+                                )}
+                              </strong>
+                            </label>
+                          )
+                        )}
+                      </fieldset>
+                    )}
+                  </div>
+
+                  {/* VALORES */}
+
+                  <div className="checkoutTotals">
+                    <div>
+                      <span>SUBTOTAL</span>
+                      <strong>
+                        {formatarMoeda(
+                          subtotal
+                        )}
+                      </strong>
                     </div>
 
-                    <div className="checkoutItemInfo">
-                      <div>
-                        <h3>{item.name}</h3>
+                    <div>
+                      <span>FRETE</span>
 
-                        <p>
-                          {item.color} / {item.size}
-                        </p>
-                      </div>
+                      <strong>
+                        {freteSelecionado
+                          ? formatarMoeda(
+                              freteSelecionado.preco
+                            )
+                          : "CALCULAR FRETE"}
+                      </strong>
+                    </div>
+
+                    <div className="checkoutTotal">
+                      <span>TOTAL</span>
 
                       <strong>
                         {formatarMoeda(
-                          item.price * item.quantity
+                          total
                         )}
                       </strong>
                     </div>
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <div className="checkoutTotals">
+                  <div>
+                    <span>
+                      ITENS DA COMPRA
+                    </span>
 
-              {/* =========================================
-                  CÁLCULO DE FRETE
-                  ========================================= */}
+                    <strong>
+                      {tentativaSalva.dados.itens.reduce(
+                        (soma, item) =>
+                          soma +
+                          item.quantity,
+                        0
+                      )}
+                    </strong>
+                  </div>
 
-              <div
-                style={{
-                  padding: "18px 0",
-                  borderTop: "1px solid #444",
-                  borderBottom: "1px solid #444",
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: 12,
-                    marginBottom: 12,
-                  }}
-                >
-                  ENTREGA — CEP{" "}
-                  {dadosEntrega.cep ||
-                    "NÃO INFORMADO"}
-                </p>
+                  <div className="checkoutTotal">
+                    <span>
+                      TOTAL DO PEDIDO
+                    </span>
 
-                <button
-                  type="button"
-                  className="checkoutContinue"
-                  onClick={() =>
-                    void calcularFrete()
-                  }
-                  disabled={
-                    cotandoFrete ||
-                    carregandoUsuario
-                  }
-                >
-                  {cotandoFrete
-                    ? "CALCULANDO FRETE..."
-                    : "CALCULAR FRETE"}
-                </button>
-
-                {erroFrete && (
-                  <p
-                    role="alert"
-                    style={{
-                      color: "#fca5a5",
-                      marginTop: 12,
-                      fontSize: 13,
-                    }}
-                  >
-                    {erroFrete}
-                  </p>
-                )}
-
-                {/* OPÇÕES RETORNADAS PELA API */}
-
-                {opcoesFrete.length > 0 && (
-                  <fieldset
-                    style={{
-                      border: 0,
-                      padding: 0,
-                      margin: "16px 0 0",
-                    }}
-                  >
-                    <legend
-                      style={{
-                        fontSize: 12,
-                        marginBottom: 10,
-                      }}
-                    >
-                      ESCOLHA A ENTREGA
-                    </legend>
-
-                    {opcoesFrete.map((opcao) => (
-                      <label
-                        key={opcao.id}
-                        style={{
-                          display: "flex",
-                          gap: 10,
-                          alignItems: "center",
-                          padding: "10px 0",
-                          cursor: "pointer",
-                          fontSize: 13,
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="frete"
-                          checked={
-                            freteSelecionadoId ===
-                            opcao.id
-                          }
-                          onChange={() => {
-                            setFreteSelecionadoId(
-                              opcao.id
-                            );
-                            setMensagemPagamento("");
-                          }}
-                        />
-
-                        <span style={{ flex: 1 }}>
-                          {opcao.transportadora}
-                          {" — "}
-                          {opcao.nome}
-
-                          {opcao.prazoDias !== null
-                            ? ` · ${opcao.prazoDias} dias`
-                            : ""}
-                        </span>
-
-                        <strong>
-                          {formatarMoeda(
-                            opcao.preco
-                          )}
-                        </strong>
-                      </label>
-                    ))}
-                  </fieldset>
-                )}
-              </div>
-
-              {/* VALORES */}
-
-              <div className="checkoutTotals">
-                <div>
-                  <span>SUBTOTAL</span>
-                  <strong>
-                    {formatarMoeda(subtotal)}
-                  </strong>
+                    <strong>
+                      {tentativaSalva.valorTotal
+                        ? formatarMoeda(
+                            Number(
+                              tentativaSalva.valorTotal
+                            )
+                          )
+                        : "A CONFIRMAR"}
+                    </strong>
+                  </div>
                 </div>
-
-                <div>
-                  <span>FRETE</span>
-
-                  <strong>
-                    {freteSelecionado
-                      ? formatarMoeda(
-                          freteSelecionado.preco
-                        )
-                      : "CALCULAR FRETE"}
-                  </strong>
-                </div>
-
-                <div className="checkoutTotal">
-                  <span>TOTAL</span>
-
-                  <strong>
-                    {formatarMoeda(total)}
-                  </strong>
-                </div>
-              </div>
+              )}
 
               {/* PRÓXIMA ETAPA */}
 
-              {/* Botão responsável por registrar o pedido no banco */}
+              {/* Registra ou recupera o mesmo pedido e solicita seu pagamento. */}
               <button
                 type="button"
                 className="checkoutContinue"
 
-                // Executa a função de criação do pedido
-                onClick={() => void continuarParaPagamento()}
+                // Usa a tentativa original também após falha ou atualização.
+                onClick={() =>
+                  void continuarParaPagamento()
+                }
 
-                // Impede vários cliques enquanto o pedido é registrado
-                disabled={criandoPedido}
+                // A ref da função também bloqueia cliques no mesmo instante.
+                disabled={
+                  criandoPedido ||
+                  carregandoUsuario ||
+                  !usuario ||
+                  !tentativaCarregada ||
+                  Boolean(erroRecuperacao)
+                }
+                aria-busy={criandoPedido}
               >
                 <span>
                   {criandoPedido
-                    ? "REGISTRANDO PEDIDO..."
-                    : "REGISTRAR PEDIDO"}
+                    ? etapaPagamento ||
+                      "PROCESSANDO..."
+                    : tentativaSalva?.revisarDados
+                      ? "REVISAR E CONTINUAR"
+                      : tentativaSalva
+                        ? "CONTINUAR PEDIDO"
+                        : "CONTINUAR PARA PAGAMENTO"}
                 </span>
 
                 <span>→</span>

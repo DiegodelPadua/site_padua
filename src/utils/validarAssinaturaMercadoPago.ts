@@ -1,4 +1,3 @@
-
 import {
   createHmac,
   timingSafeEqual,
@@ -7,16 +6,8 @@ import {
 /* =========================================================
    VALIDAR ASSINATURA DO WEBHOOK MERCADO PAGO
    =========================================================
-   Verifica a assinatura HMAC-SHA256 enviada pelo
-   Mercado Pago no cabeçalho x-signature.
-
-   A chave secreta deve existir somente no servidor.
-
-   Esta função:
-   - Não consulta pagamentos.
-   - Não altera pedidos.
-   - Não modifica estoque.
-   - Apenas verifica a autenticidade da assinatura.
+   Verifica HMAC-SHA256 com o segredo exclusivo do servidor.
+   Não consulta pagamentos nem altera pedidos ou estoque.
    ========================================================= */
 
 type DadosAssinaturaMercadoPago = {
@@ -30,70 +21,89 @@ export function validarAssinaturaMercadoPago({
   requestId,
   dataId,
 }: DadosAssinaturaMercadoPago): boolean {
-  // 1. Recupera a chave secreta configurada no servidor.
-  const segredo = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+  const segredo =
+    process.env.MERCADO_PAGO_WEBHOOK_SECRET;
 
-  // Sem segredo ou cabeçalhos, a notificação é rejeitada.
-  if (!segredo || !assinatura || !requestId || !dataId) {
+  if (
+    !segredo ||
+    !assinatura ||
+    !requestId ||
+    !dataId ||
+    assinatura.length > 1024 ||
+    !/^[A-Za-z0-9._:-]{1,200}$/.test(requestId) ||
+    !/^[A-Za-z0-9_-]{1,120}$/.test(dataId)
+  ) {
     return false;
   }
 
-  // 2. Extrai os componentes do cabeçalho x-signature.
-  // Formato esperado: ts=...,v1=...
-  const partes = assinatura.split(",");
+  let timestamp: string | undefined;
+  let assinaturaRecebida: string | undefined;
 
-  const timestamp = partes
-    .find((parte) => parte.trim().startsWith("ts="))
-    ?.trim()
-    .slice(3);
+  // Rejeita componentes duplicados para não interpretar um cabeçalho ambíguo.
+  for (const parte of assinatura.split(",")) {
+    const separador = parte.indexOf("=");
 
-  const assinaturaRecebida = partes
-    .find((parte) => parte.trim().startsWith("v1="))
-    ?.trim()
-    .slice(3);
+    if (separador < 0) return false;
+
+    const nome = parte
+      .slice(0, separador)
+      .trim();
+
+    const valor = parte
+      .slice(separador + 1)
+      .trim();
+
+    if (nome === "ts") {
+      if (timestamp !== undefined) return false;
+      timestamp = valor;
+    } else if (nome === "v1") {
+      if (assinaturaRecebida !== undefined) return false;
+      assinaturaRecebida = valor;
+    }
+  }
 
   if (
     !timestamp ||
-    !/^\d+$/.test(timestamp) ||
+    !/^(?:\d{10}|\d{13})$/.test(timestamp) ||
     !assinaturaRecebida ||
     !/^[a-fA-F0-9]{64}$/.test(assinaturaRecebida)
   ) {
     return false;
   }
 
-  // 3. Impede aceitar notificações muito antigas.
-  const instante = Number(timestamp) * 1000;
+  // Aceita segundos ou milissegundos, mantendo a tolerância de cinco minutos.
+  // A unidade é convertida somente para conferir a idade da notificação.
+  const instante =
+    timestamp.length === 13
+      ? Number(timestamp)
+      : Number(timestamp) * 1000;
 
   if (
-    !Number.isFinite(instante) ||
+    !Number.isSafeInteger(instante) ||
     Math.abs(Date.now() - instante) > 5 * 60 * 1000
   ) {
     return false;
   }
 
-  // 4. Monta o manifesto utilizado pelo Mercado Pago.
+  // Usa os valores recebidos no manifesto, sem alterar maiúsculas/minúsculas
+  // do ID nem converter o timestamp que participa do cálculo da assinatura.
   const manifesto =
     `id:${dataId};request-id:${requestId};ts:${timestamp};`;
 
-  // 5. Calcula a assinatura esperada.
-  const assinaturaEsperada = createHmac(
+  const esperada = createHmac(
     "sha256",
     segredo
   )
     .update(manifesto)
     .digest();
 
-  const assinaturaInformada = Buffer.from(
+  const informada = Buffer.from(
     assinaturaRecebida,
     "hex"
   );
 
-  // 6. Compara as assinaturas em tempo constante.
   return (
-    assinaturaEsperada.length === assinaturaInformada.length &&
-    timingSafeEqual(
-      assinaturaEsperada,
-      assinaturaInformada
-    )
+    esperada.length === informada.length &&
+    timingSafeEqual(esperada, informada)
   );
 }

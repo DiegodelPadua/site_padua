@@ -1,196 +1,263 @@
-
 import { NextRequest, NextResponse } from "next/server";
-
-import { validarAssinaturaMercadoPago } from
-  "../../../../src/utils/validarAssinaturaMercadoPago";
-
-  // Permite comparar valores monetários com precisão.
 import { Prisma } from "@prisma/client";
 
-  // Localiza o pagamento vinculado à Order no MySQL.
-import { buscarPagamentoPorOrderMercadoPago } from
-  "../../../../src/repositories/pagamentoRepository";
+import {
+  validarAssinaturaMercadoPago,
+} from "../../../../src/utils/validarAssinaturaMercadoPago";
 
-// Consulta o estado da Order diretamente no Mercado Pago.
-import { consultarOrderMercadoPago } from
-  "../../../../src/services/mercadoPagoService";
+import {
+  buscarPagamentoPorOrderMercadoPago,
+} from "../../../../src/repositories/pagamentoRepository";
+
+import {
+  consultarOrderMercadoPago,
+} from "../../../../src/services/mercadoPagoService";
+
+import {
+  mapearStatusMercadoPago,
+  interpretarStatusTransacaoMercadoPago,
+} from "../../../../src/utils/mercadoPagoStatus";
 
 /* =========================================================
    WEBHOOK MERCADO PAGO - PÁDUA CULTURE
-
-   Recebe notificações e valida a assinatura.
-
-   IMPORTANTE:
-   - Não confirma pagamentos.
-   - Não atualiza pedidos.
-   - Não modifica estoque.
+   =========================================================
+   Valida a assinatura e consulta a Order no provedor.
+   Não confirma pagamentos, pedidos ou movimentações de estoque
+   enquanto a conciliação transacional não estiver conectada.
    ========================================================= */
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function responder(
+  dados: Record<string, unknown>,
+  status: number
+) {
+  return NextResponse.json(dados, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+      ...(status === 503
+        ? { "Retry-After": "60" }
+        : {}),
+    },
+  });
+}
+
+// Impede acumular um corpo grande antes de verificar seu tamanho.
+async function lerCorpoLimitado(
+  request: NextRequest
+): Promise<string | null> {
+  if (!request.body) return "";
+
+  const leitor = request.body.getReader();
+  const partes: Uint8Array[] = [];
+  let tamanho = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await leitor.read();
+
+      if (done) break;
+
+      tamanho += value.byteLength;
+
+      if (tamanho > 10000) {
+        await leitor.cancel().catch(() => undefined);
+        return null;
+      }
+
+      partes.push(value);
+    }
+  } finally {
+    leitor.releaseLock();
+  }
+
+  return Buffer.concat(partes).toString("utf8");
+}
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Recupera os cabeçalhos da notificação.
-    const assinatura = request.headers.get("x-signature");
-    const requestId = request.headers.get("x-request-id");
-
-    // 2. Recupera o identificador da Order enviado
-    // pelo Mercado Pago na URL da notificação.
-    const dataId = request.nextUrl.searchParams.get("data.id");
-
-    // 3. Rejeita notificações sem identificação.
-    if (!assinatura || !requestId || !dataId) {
-      return NextResponse.json(
-        { erro: "Assinatura ou identificação ausente." },
-        { status: 401 }
+    if (!process.env.MERCADO_PAGO_WEBHOOK_SECRET) {
+      return responder(
+        { erro: "Webhook temporariamente indisponível." },
+        503
       );
     }
 
-    // 4. Valida criptograficamente a assinatura.
-    const assinaturaValida = validarAssinaturaMercadoPago({
-      assinatura,
-      requestId,
-      dataId,
-    });
+    const ids =
+      request.nextUrl.searchParams.getAll("data.id");
 
-    // 5. Impede o processamento de notificações
-    // que não passaram na validação.
+    if (
+      ids.length !== 1 ||
+      !/^ORD[A-Za-z0-9_-]{1,100}$/.test(ids[0])
+    ) {
+      return responder(
+        { erro: "Identificação da Order inválida." },
+        400
+      );
+    }
+
+    const dataId = ids[0];
+
+    const assinaturaValida =
+      validarAssinaturaMercadoPago({
+        assinatura: request.headers.get("x-signature"),
+        requestId: request.headers.get("x-request-id"),
+        dataId,
+      });
+
     if (!assinaturaValida) {
-      return NextResponse.json(
+      return responder(
         { erro: "Assinatura inválida." },
-        { status: 401 }
+        401
       );
     }
 
-    // 6. Lê o corpo somente após validar a assinatura.
-    const corpo = await request.text();
+    const corpo = await lerCorpoLimitado(request);
 
-    if (Buffer.byteLength(corpo, "utf8") > 10000) {
-      return NextResponse.json(
+    if (corpo === null) {
+      return responder(
         { erro: "Notificação muito grande." },
-        { status: 413 }
+        413
       );
     }
 
-    // 7. Verifica o formato JSON.
     let notificacao: unknown;
 
     try {
       notificacao = JSON.parse(corpo);
     } catch {
-      return NextResponse.json(
+      return responder(
         { erro: "JSON inválido." },
-        { status: 400 }
+        400
       );
     }
 
     if (
+      !notificacao ||
       typeof notificacao !== "object" ||
-      notificacao === null ||
       Array.isArray(notificacao)
     ) {
-      return NextResponse.json(
+      return responder(
         { erro: "Notificação inválida." },
-        { status: 400 }
+        400
       );
     }
 
+    const evento =
+      notificacao as Record<string, unknown>;
 
-    // 8. Interpreta os campos da notificação.
-    // Ainda não utilizamos esses dados para confirmar pagamentos.
-    const evento = notificacao as {
-    type?: unknown;
-    data?: {
-        id?: unknown;
-    };
-    };
-
-    // 9. Aceita somente notificações do tipo Order.
     if (evento.type !== "order") {
-    return NextResponse.json(
+      return responder(
         {
-        recebido: true,
-        processado: false,
-        motivo: "Evento não processado por esta integração.",
+          recebido: true,
+          processado: false,
+          motivo: "EVENTO_IGNORADO",
         },
-        { status: 200 }
-    );
+        200
+      );
     }
 
-    // 10. Confere se o identificador informado no corpo
-    // corresponde ao identificador utilizado na assinatura.
+    const dados = evento.data as
+      | Record<string, unknown>
+      | undefined;
+
     if (
-    typeof evento.data?.id !== "string" ||
-    evento.data.id !== dataId
+      !dados ||
+      typeof dados !== "object" ||
+      Array.isArray(dados) ||
+      dados.id !== dataId
     ) {
-    return NextResponse.json(
+      return responder(
         { erro: "Identificador da Order inconsistente." },
-        { status: 400 }
-    );
+        400
+      );
     }
 
-   
-// 11. Localiza a cobrança registrada no MySQL.
-// O identificador veio de uma notificação autenticada.
-const pagamento = await buscarPagamentoPorOrderMercadoPago(dataId);
+    // Não usa status, valores ou live_mode do corpo para aprovar pagamentos.
+    const pagamento =
+      await buscarPagamentoPorOrderMercadoPago(dataId);
 
-// 12. Se a Order ainda não estiver vinculada ao banco,
-// não tentamos confirmar nenhum pagamento.
-if (!pagamento) {
-  return NextResponse.json(
-    {
-      recebido: true,
-      processado: false,
-      motivo: "Order ainda não localizada no banco.",
-    },
-    { status: 200 }
-  );
-}
+    if (!pagamento) {
+      // O webhook pode chegar antes de o ID externo ser persistido.
+      // Não responde sucesso, para não encerrar prematuramente os reenvios.
+      return responder(
+        {
+          recebido: true,
+          processado: false,
+          motivo: "VINCULO_PENDENTE",
+        },
+        503
+      );
+    }
 
-// 13. Consulta a situação atual diretamente no Mercado Pago.
-// Nunca confiamos apenas no status informado pelo webhook.
-const order = await consultarOrderMercadoPago(dataId);
+    const order = await consultarOrderMercadoPago(dataId);
+    const valor = new Prisma.Decimal(order.valorTotal);
 
-// 14. Confere se a Order pertence ao pedido encontrado.
-if (order.referenciaExterna !== String(pagamento.pedidoId)) {
-  throw new Error(
-    "A referência da Order não corresponde ao pedido."
-  );
-}
+    if (
+      order.mercadoPagoOrderId !== dataId ||
+      order.referenciaExterna !==
+        String(pagamento.pedidoId) ||
+      !valor.equals(pagamento.valor) ||
+      !valor.equals(pagamento.pedido.valorTotal)
+    ) {
+      return responder(
+        {
+          recebido: true,
+          processado: false,
+          motivo: "DADOS_DIVERGENTES",
+        },
+        503
+      );
+    }
 
-// 15. Compara o valor oficial do MySQL com o valor do provedor.
-// Utilizamos Decimal para evitar erros de ponto flutuante.
-const valorMercadoPago = new Prisma.Decimal(order.valorTotal);
+    const estado = mapearStatusMercadoPago(
+      order.status,
+      order.statusDetail
+    );
 
-if (
-  !valorMercadoPago.equals(pagamento.valor) ||
-  !valorMercadoPago.equals(pagamento.pedido.valorTotal)
-) {
-  throw new Error(
-    "O valor da Order não corresponde ao pedido."
-  );
-}
+    const exigeConciliacao =
+      estado.resultado !== "PENDENTE" ||
+      order.transacoes.some((transacao) => {
+        const analise =
+          interpretarStatusTransacaoMercadoPago(
+            transacao.status ?? "",
+            transacao.status_detail
+          );
 
-// 16. A consulta financeira foi realizada com sucesso.
-// Ainda não alteramos o pagamento, o pedido ou o estoque.
-return NextResponse.json(
-  {
-    recebido: true,
-    assinaturaValida: true,
-    orderLocalizada: true,
-    conciliacaoConsultada: true,
-    processado: false,
-  },
-  { status: 200 }
-);
-  } catch (erro) {
-    // Registra apenas uma mensagem genérica no servidor.
-    // Não expõe credenciais ou detalhes financeiros ao cliente.
-    console.error("Falha no processamento do webhook Mercado Pago.");
+        return analise.aprovado || analise.exigeRevisao;
+      });
 
-    return NextResponse.json(
-      { erro: "Erro ao processar notificação." },
-      { status: 500 }
+    if (exigeConciliacao) {
+      // Não reconhece como concluída uma atualização financeira ainda não salva.
+      return responder(
+        {
+          recebido: true,
+          processado: false,
+          motivo: "CONCILIACAO_PENDENTE",
+        },
+        503
+      );
+    }
+
+    return responder(
+      {
+        recebido: true,
+        conferido: true,
+        confirmado: false,
+      },
+      200
+    );
+  } catch {
+    // Mensagem genérica: não registra assinatura, segredo ou resposta financeira.
+    console.error(
+      "Falha no processamento do webhook Mercado Pago."
+    );
+
+    return responder(
+      { erro: "Não foi possível processar a notificação." },
+      503
     );
   }
 }

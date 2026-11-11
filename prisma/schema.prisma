@@ -231,10 +231,13 @@ model EnderecoEntregaPedido {
 model Pagamento {
   id                   Int                  @id @default(autoincrement())
   pedidoId             Int
-  metodo               MetodoPagamento
+  // Fica vazio até o provedor confirmar o meio de pagamento escolhido.
+  metodo               MetodoPagamento?
   status               StatusPagamento      @default(PENDENTE)
   valor                Decimal              @db.Decimal(10, 2)
   identificadorExterno String?
+  // Link validado recebido na criação da Order, para retomar o checkout.
+  checkoutUrl          String?              @db.Text
     // Identificador da operação de criação da order no Mercado Pago.
   chaveIdempotencia String? @unique @db.VarChar(100)
   criadoEm             DateTime             @default(now())

@@ -11,7 +11,7 @@
    - Tentativa financeira.
    - Mercado Pago Checkout Pro.
 
-   Nenhuma cobrança é criada neste estágio.
+   A criação externa fica concentrada em iniciarPagamentoMercadoPago.
    ========================================================= */
 
 // Tipos do Prisma utilizados nos cálculos financeiros.
@@ -23,15 +23,15 @@ import {
   registrarTentativaPagamento,
   buscarTentativaMercadoPago,
   reservarExecucaoCobranca,
+  registrarIdentificadorMercadoPago,
 } from "../repositories/pagamentoRepository";
 
 // Serviços de criação e consulta de cobranças no Mercado Pago.
 import {
   criarOrderMercadoPago,
   consultarOrderMercadoPago,
+  validarUrlCheckoutMercadoPago,
 } from "./mercadoPagoService";
-
-
 
 import type {
   TransacaoOrderMercadoPago,
@@ -40,6 +40,44 @@ import type {
 import {
   interpretarStatusTransacaoMercadoPago,
 } from "../utils/mercadoPagoStatus";
+
+/* Erros esperados para a futura rota responder sem expor detalhes internos. */
+export class PagamentoServiceError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly codigo: string
+  ) {
+    super(message);
+    this.name = "PagamentoServiceError";
+  }
+}
+
+// Confere o estado local antes de criar ou devolver um link de pagamento.
+function validarPedidoAguardandoPagamento(pedido: {
+  status: string;
+  reservaExpiraEm: Date | null;
+}) {
+  if (pedido.status !== "AGUARDANDO_PAGAMENTO") {
+    throw new PagamentoServiceError(
+      "Este pedido não está disponível para pagamento.",
+      409,
+      "PEDIDO_INDISPONIVEL"
+    );
+  }
+
+  if (
+    !pedido.reservaExpiraEm ||
+    pedido.reservaExpiraEm.getTime() <= Date.now()
+  ) {
+    throw new PagamentoServiceError(
+      "A reserva expirou. Verifique a situação do pedido antes de continuar.",
+      409,
+      "RESERVA_EXPIRADA"
+    );
+  }
+}
+
 /* =========================================================
    PREPARAR PAGAMENTO
    =========================================================
@@ -73,7 +111,8 @@ import {
 export async function prepararPagamento(
   pedidoId: number,
   usuarioId: number,
-  metodo: MetodoPagamento
+  // null indica que o cliente ainda escolherá o método no Mercado Pago.
+  metodo: MetodoPagamento | null
 ) {
   // 1. Recupera os dados oficiais do pedido no MySQL.
   const pedido = await buscarDadosPedidoMercadoPago(
@@ -106,6 +145,7 @@ export async function prepararPagamento(
     valor: pagamento.valor.toString(),
   };
 }
+
 /* =========================================================
    VALIDAR VALORES DO PEDIDO
    =========================================================
@@ -138,7 +178,8 @@ export function validarValoresPedido(
         !Number.isSafeInteger(item.quantidade) ||
         item.quantidade <= 0 ||
         !item.precoUnitario.isFinite() ||
-        item.precoUnitario.lessThan(0)
+        item.precoUnitario.lessThan(0) ||
+        item.precoUnitario.decimalPlaces() > 2
       ) {
         throw new Error("Produto com valor ou quantidade inválida.");
       }
@@ -150,12 +191,16 @@ export function validarValoresPedido(
     new Prisma.Decimal(0)
   );
 
-  // Confere os valores adicionais do pedido.
+  // Confere os valores adicionais e a precisão monetária.
   if (
     !dados.valorFrete.isFinite() ||
     dados.valorFrete.lessThan(0) ||
     !dados.valorDesconto.isFinite() ||
-    dados.valorDesconto.lessThan(0)
+    dados.valorDesconto.lessThan(0) ||
+    dados.valorFrete.decimalPlaces() > 2 ||
+    dados.valorDesconto.decimalPlaces() > 2 ||
+    !dados.valorTotal.isFinite() ||
+    dados.valorTotal.decimalPlaces() > 2
   ) {
     throw new Error("Frete ou desconto inválido.");
   }
@@ -167,6 +212,7 @@ export function validarValoresPedido(
 
   if (
     totalCalculado.lessThanOrEqualTo(0) ||
+    dados.valorDesconto.greaterThan(subtotal) ||
     !totalCalculado.equals(dados.valorTotal)
   ) {
     throw new Error(
@@ -179,7 +225,6 @@ export function validarValoresPedido(
     totalCalculado,
   };
 }
-
 
 /* =========================================================
    PREPARAR DADOS DA COBRANÇA MERCADO PAGO
@@ -233,11 +278,27 @@ export async function prepararDadosCobrancaMercadoPago(
     );
   }
 
+  // A chave precisa ser válida antes de reservar a execução da cobrança.
+  const chaveIdempotencia = pagamento.chaveIdempotencia;
+  const formatoUUID =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  if (
+    typeof chaveIdempotencia !== "string" ||
+    !formatoUUID.test(chaveIdempotencia)
+  ) {
+    throw new PagamentoServiceError(
+      "A tentativa exige verificação antes de continuar.",
+      409,
+      "CHAVE_INVALIDA"
+    );
+  }
+
   // 6. Retorna os dados necessários para a integração.
   return {
     pagamentoId: pagamento.id,
     pedidoId: pedido.id,
-    chaveIdempotencia: pagamento.chaveIdempotencia,
+    chaveIdempotencia,
     valorTotal: pedido.valorTotal,
     valorFrete: pedido.valorFrete,
     valorDesconto: pedido.valorDesconto,
@@ -248,7 +309,6 @@ export async function prepararDadosCobrancaMercadoPago(
     })),
   };
 }
-
 
 /* =========================================================
    AUTORIZAR EXECUÇÃO DA COBRANÇA
@@ -295,8 +355,10 @@ export async function autorizarCobrancaMercadoPago(
 
   // 5. Impede que outra requisição execute a mesma cobrança.
   if (!autorizado) {
-    throw new Error(
-      "Esta tentativa já está em processamento. Aguarde."
+    throw new PagamentoServiceError(
+      "Esta tentativa já está em processamento. Aguarde.",
+      409,
+      "PAGAMENTO_EM_PROCESSAMENTO"
     );
   }
 
@@ -304,6 +366,288 @@ export async function autorizarCobrancaMercadoPago(
   return dados;
 }
 
+/* =========================================================
+   RETOMAR CHECKOUT DE UMA ORDER JÁ VINCULADA
+   =========================================================
+   Consulta o provedor e usa o link persistido.
+   Não cria outra Order e não confirma pagamentos.
+   ========================================================= */
+
+async function retomarCheckoutMercadoPago(
+  pedidoId: number,
+  usuarioId: number,
+  pagamentoId: number
+) {
+  const pedido = await buscarDadosPedidoMercadoPago(
+    pedidoId,
+    usuarioId
+  );
+
+  validarPedidoAguardandoPagamento(pedido);
+  validarValoresPedido(pedido);
+
+  const tentativa = await buscarTentativaMercadoPago(
+    pagamentoId,
+    pedidoId
+  );
+
+  if (
+    !tentativa.identificadorExterno ||
+    (
+      tentativa.status !== "PENDENTE" &&
+      tentativa.status !== "PROCESSANDO"
+    ) ||
+    !tentativa.valor.equals(pedido.valorTotal)
+  ) {
+    throw new PagamentoServiceError(
+      "Esta tentativa exige verificação antes de continuar.",
+      409,
+      "CONCILIACAO_NECESSARIA"
+    );
+  }
+
+  let order: Awaited<ReturnType<typeof consultarOrderMercadoPago>>;
+
+  try {
+    order = await consultarOrderMercadoPago(
+      tentativa.identificadorExterno
+    );
+  } catch {
+    throw new PagamentoServiceError(
+      "Não foi possível consultar o pagamento. A tentativa foi preservada.",
+      502,
+      "CONSULTA_INDISPONIVEL"
+    );
+  }
+
+  if (
+    order.mercadoPagoOrderId !== tentativa.identificadorExterno ||
+    order.referenciaExterna !== String(pedidoId) ||
+    !new Prisma.Decimal(order.valorTotal).equals(pedido.valorTotal)
+  ) {
+    throw new PagamentoServiceError(
+      "Os dados do pagamento exigem conciliação.",
+      409,
+      "CONCILIACAO_NECESSARIA"
+    );
+  }
+
+  // Somente uma Order criada e sem transações pode voltar ao checkout.
+  // Pagamentos pendentes, processados ou com estado desconhecido exigem
+  // acompanhamento financeiro, em vez de oferecer nova cobrança.
+  if (order.status !== "created" || order.transacoes.length > 0) {
+    throw new PagamentoServiceError(
+      "O pagamento já possui movimentação ou não está disponível para continuar.",
+      409,
+      "CONCILIACAO_NECESSARIA"
+    );
+  }
+
+  let checkoutUrl = tentativa.checkoutUrl;
+
+  // Completa um registro antigo somente se o provedor fornecer o link.
+  // Não reconstrói URLs e não repete o POST para tentar obter outra URL.
+  if (!checkoutUrl) {
+    if (!order.checkoutUrl) {
+      throw new PagamentoServiceError(
+        "O link desta tentativa está indisponível. O pagamento exige verificação.",
+        409,
+        "LINK_INDISPONIVEL"
+      );
+    }
+
+    const chave = tentativa.chaveIdempotencia;
+
+    if (!chave) {
+      throw new PagamentoServiceError(
+        "A tentativa exige verificação antes de continuar.",
+        409,
+        "CHAVE_INVALIDA"
+      );
+    }
+
+    const salvo = await registrarIdentificadorMercadoPago(
+      pagamentoId,
+      chave,
+      tentativa.identificadorExterno,
+      order.checkoutUrl
+    );
+
+    checkoutUrl = salvo.checkoutUrl;
+  }
+
+  // A consulta externa pode levar tempo: confere novamente o estado local.
+  const pedidoAtual = await buscarDadosPedidoMercadoPago(
+    pedidoId,
+    usuarioId
+  );
+
+  validarPedidoAguardandoPagamento(pedidoAtual);
+
+  const tentativaAtual = await buscarTentativaMercadoPago(
+    pagamentoId,
+    pedidoId
+  );
+
+  if (
+    tentativaAtual.identificadorExterno !== tentativa.identificadorExterno ||
+    (
+      tentativaAtual.status !== "PENDENTE" &&
+      tentativaAtual.status !== "PROCESSANDO"
+    ) ||
+    !tentativaAtual.valor.equals(pedidoAtual.valorTotal) ||
+    !new Prisma.Decimal(order.valorTotal).equals(pedidoAtual.valorTotal) ||
+    !checkoutUrl ||
+    tentativaAtual.checkoutUrl !== checkoutUrl
+  ) {
+    throw new PagamentoServiceError(
+      "A situação do pagamento mudou. Verifique o pedido antes de continuar.",
+      409,
+      "CONCILIACAO_NECESSARIA"
+    );
+  }
+
+  return {
+    pedidoId,
+    pagamentoId,
+    checkoutUrl: validarUrlCheckoutMercadoPago(
+      checkoutUrl,
+      tentativa.identificadorExterno
+    ),
+  };
+}
+
+/* =========================================================
+   INICIAR OU RETOMAR PAGAMENTO MERCADO PAGO
+   =========================================================
+   Recebe o ID de um pedido existente e o usuário da sessão.
+   Não cria pedidos e não confirma aprovação financeira.
+   Mantém a tentativa bloqueada quando o resultado é incerto.
+   ========================================================= */
+
+export async function iniciarPagamentoMercadoPago(
+  pedidoId: number,
+  usuarioId: number
+) {
+  if (
+    !Number.isSafeInteger(pedidoId) ||
+    pedidoId <= 0 ||
+    !Number.isSafeInteger(usuarioId) ||
+    usuarioId <= 0
+  ) {
+    throw new PagamentoServiceError(
+      "Identificadores inválidos.",
+      400,
+      "DADOS_INVALIDOS"
+    );
+  }
+
+  // Bloqueado por padrão. A futura configuração deve usar a conta vendedora
+  // de teste do Mercado Pago; o valor desta variável não valida a credencial.
+  if (process.env.MERCADO_PAGO_CHECKOUT_MODO !== "teste") {
+    throw new PagamentoServiceError(
+      "O início de pagamento ainda não está habilitado.",
+      503,
+      "PAGAMENTO_DESABILITADO"
+    );
+  }
+
+  // Confere a presença da configuração antes de reservar uma execução.
+  if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
+    throw new PagamentoServiceError(
+      "O serviço de pagamento está indisponível.",
+      503,
+      "CONFIGURACAO_INDISPONIVEL"
+    );
+  }
+
+  // O usuarioId deve vir exclusivamente da sessão validada pela futura rota.
+  const pedido = await buscarDadosPedidoMercadoPago(
+    pedidoId,
+    usuarioId
+  );
+
+  validarPedidoAguardandoPagamento(pedido);
+  validarValoresPedido(pedido);
+
+  // null mantém a escolha do método para o checkout do Mercado Pago.
+  const preparada = await prepararPagamento(
+    pedidoId,
+    usuarioId,
+    null
+  );
+
+  const tentativa = await buscarTentativaMercadoPago(
+    preparada.pagamentoId,
+    pedidoId
+  );
+
+  if (tentativa.identificadorExterno) {
+    const checkout = await retomarCheckoutMercadoPago(
+      pedidoId,
+      usuarioId,
+      tentativa.id
+    );
+
+    return { ...checkout, retomado: true };
+  }
+
+  // PROCESSANDO sem ID pode representar uma Order criada antes de um timeout.
+  // Não troca a chave, não reinicia a tentativa e não cria outra cobrança.
+  if (tentativa.status !== "PENDENTE" || tentativa.checkoutUrl) {
+    throw new PagamentoServiceError(
+      "Esta tentativa está em verificação. Aguarde a conciliação para continuar.",
+      409,
+      "CONCILIACAO_NECESSARIA"
+    );
+  }
+
+  // O repositório permite apenas uma execução por tentativa.
+  const dados = await autorizarCobrancaMercadoPago(
+    pedidoId,
+    usuarioId,
+    tentativa.id
+  );
+
+  let order: Awaited<ReturnType<typeof criarOrderMercadoPago>>;
+
+  try {
+    order = await criarOrderMercadoPago(dados);
+  } catch {
+    // A falha não prova que o provedor deixou de criar a Order.
+    // Preserva PROCESSANDO para impedir uma nova criação automática.
+    throw new PagamentoServiceError(
+      "Não foi possível concluir o início do pagamento. A tentativa ficou em verificação.",
+      502,
+      "RESULTADO_INDETERMINADO"
+    );
+  }
+
+  try {
+    // ID e URL são persistidos antes de oferecer redirecionamento.
+    await registrarIdentificadorMercadoPago(
+      tentativa.id,
+      dados.chaveIdempotencia,
+      order.mercadoPagoOrderId,
+      order.checkoutUrl
+    );
+  } catch {
+    throw new PagamentoServiceError(
+      "A tentativa exige conciliação antes de continuar o pagamento.",
+      503,
+      "CONCILIACAO_NECESSARIA"
+    );
+  }
+
+  // Confere novamente provedor, reserva e tentativa antes de devolver o link.
+  const checkout = await retomarCheckoutMercadoPago(
+    pedidoId,
+    usuarioId,
+    tentativa.id
+  );
+
+  return { ...checkout, retomado: false };
+}
 
 /* =========================================================
    CONFERIR COBRANÇA COM O PEDIDO
@@ -383,8 +727,6 @@ export async function conferirCobrancaMercadoPago(
   };
 }
 
-
-
 /* =========================================================
    VALIDAR TRANSAÇÕES FINANCEIRAS DO MERCADO PAGO
    =========================================================
@@ -419,42 +761,40 @@ export function validarTransacoesMercadoPago(
     );
   }
 
-  
-// 3. Exige revisão se alguma transação apresentar
-// informações incompletas ou status desconhecido.
-// Não autorizamos aprovação diante de dados ambíguos.
-for (const transacao of transacoes) {
-  if (
-    typeof transacao.status !== "string" ||
-    !transacao.status.trim()
-  ) {
-    throw new Error(
-      "A Order contém uma transação sem status válido."
-    );
+  // 3. Exige revisão se alguma transação apresentar
+  // informações incompletas ou status desconhecido.
+  // Não autorizamos aprovação diante de dados ambíguos.
+  for (const transacao of transacoes) {
+    if (
+      typeof transacao.status !== "string" ||
+      !transacao.status.trim()
+    ) {
+      throw new Error(
+        "A Order contém uma transação sem status válido."
+      );
+    }
+
+    // Interpreta o status de cada transação.
+    const interpretacao =
+      interpretarStatusTransacaoMercadoPago(transacao.status);
+
+    // Status desconhecidos e estornos exigem análise.
+    if (interpretacao.exigeRevisao) {
+      throw new Error(
+        "A Order contém uma transação que exige revisão financeira."
+      );
+    }
+
+    // Não aceitamos transações sem identificação.
+    if (
+      typeof transacao.id !== "string" ||
+      !transacao.id.trim()
+    ) {
+      throw new Error(
+        "A Order contém uma transação sem identificador."
+      );
+    }
   }
-
-  // Interpreta o status de cada transação.
-  const interpretacao =
-    interpretarStatusTransacaoMercadoPago(transacao.status);
-
-  // Status desconhecidos e estornos exigem análise.
-  if (interpretacao.exigeRevisao) {
-    throw new Error(
-      "A Order contém uma transação que exige revisão financeira."
-    );
-  }
-
-  // Não aceitamos transações sem identificação.
-  if (
-    typeof transacao.id !== "string" ||
-    !transacao.id.trim()
-  ) {
-    throw new Error(
-      "A Order contém uma transação sem identificador."
-    );
-  }
-}
-
 
   // 3. Identifica as transações aprovadas.
   const aprovadas = transacoes.filter((transacao) => {
@@ -528,8 +868,6 @@ for (const transacao of transacoes) {
     motivo: "Transação aprovada e valor correspondente.",
   };
 }
-
-
 
 /* =========================================================
    CONCILIAR COBRANÇA MERCADO PAGO
@@ -607,30 +945,29 @@ export async function conciliarCobrancaMercadoPago(
     );
   }
 
-// 8. Verifica se a Order está em um estado compatível
-// com a análise de uma possível aprovação financeira.
-//
-// Esta é uma proteção preliminar. Os estados precisam
-// ser confirmados nos testes da integração utilizada.
-const statusOrder = order.status.trim().toLowerCase();
+  // 8. Verifica se a Order está em um estado compatível
+  // com a análise de uma possível aprovação financeira.
+  //
+  // Esta é uma proteção preliminar. Os estados precisam
+  // ser confirmados nos testes da integração utilizada.
+  const statusOrder = order.status.trim().toLowerCase();
 
-if (
-  statusOrder === "canceled" ||
-  statusOrder === "cancelled" ||
-  statusOrder === "failed"
-) {
-  throw new Error(
-    "A Order foi cancelada ou falhou. Exige conciliação."
+  if (
+    statusOrder === "canceled" ||
+    statusOrder === "cancelled" ||
+    statusOrder === "failed"
+  ) {
+    throw new Error(
+      "A Order foi cancelada ou falhou. Exige conciliação."
+    );
+  }
+
+  // 9. Analisa as transações retornadas pelo provedor.
+  // O resultado ainda não autoriza confirmar o pedido.
+  const validacao = validarTransacoesMercadoPago(
+    order.transacoes,
+    pedido.valorTotal
   );
-}
-
-// 9. Analisa as transações retornadas pelo provedor.
-// O resultado ainda não autoriza confirmar o pedido.
-const validacao = validarTransacoesMercadoPago(
-  order.transacoes,
-  pedido.valorTotal
-);
-
 
   // 9. Retorna os dados para análise posterior.
   // Uma transação aprovada ainda não autoriza,
@@ -649,4 +986,3 @@ const validacao = validarTransacoesMercadoPago(
     motivo: validacao.motivo,
   };
 }
-
