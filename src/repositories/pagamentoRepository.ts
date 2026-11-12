@@ -1224,3 +1224,293 @@
      // 5. Retorna a tentativa e o pedido correspondente.
      return pagamentos[0];
    }
+
+   /* =========================================================
+   REVISÃO ADMINISTRATIVA DE PAGAMENTO
+   ========================================================= */
+
+export async function buscarAprovacaoParaRevisao(
+  pedidoId: number
+) {
+  return prisma.pagamento.findMany({
+    where: {
+      pedidoId,
+      status: StatusPagamento.APROVADO,
+    },
+    take: 2,
+    select: {
+      id: true,
+      pedidoId: true,
+      valor: true,
+      metodo: true,
+      identificadorExterno: true,
+      pedido: {
+        select: { valorTotal: true },
+      },
+    },
+  });
+}
+
+export class RevisaoPagamentoError extends Error {
+  constructor(
+    mensagem: string,
+    public readonly status: number = 409
+  ) {
+    super(mensagem);
+    this.name = "RevisaoPagamentoError";
+  }
+}
+
+export async function revisarAprovacaoNoBanco(
+  pedidoId: number,
+  administradorId: number,
+  prova: {
+    pagamentoId: number;
+    orderId: string;
+    transacaoId: string;
+    valor: Prisma.Decimal;
+    metodo: MetodoPagamento;
+  },
+  confirmar: boolean
+) {
+  if (
+    ![pedidoId, administradorId, prova.pagamentoId].every(
+      (id) => Number.isSafeInteger(id) && id > 0
+    ) ||
+    !/^ORD[A-Za-z0-9_-]{1,100}$/.test(prova.orderId) ||
+    !/^[A-Za-z0-9_-]{1,150}$/.test(prova.transacaoId) ||
+    !prova.valor.isFinite() ||
+    prova.valor.lessThanOrEqualTo(0) ||
+    prova.valor.decimalPlaces() > 2 ||
+    ![MetodoPagamento.PIX, MetodoPagamento.CARTAO].includes(
+      prova.metodo
+    )
+  ) {
+    throw new RevisaoPagamentoError(
+      "Comprovante de revisão inválido."
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await bloquearPedidoParaPagamento(tx, pedidoId);
+
+    const administrador = await tx.usuario.findUnique({
+      where: { id: administradorId },
+      select: { perfil: true },
+    });
+
+    if (administrador?.perfil !== "ADMIN") {
+      throw new RevisaoPagamentoError(
+        "Acesso administrativo necessário.",
+        403
+      );
+    }
+
+    const pedido = await tx.pedido.findUnique({
+      where: { id: pedidoId },
+      select: {
+        status: true,
+        valorTotal: true,
+        reservaExpiraEm: true,
+        itens: {
+          select: {
+            varianteId: true,
+            quantidade: true,
+          },
+        },
+        movimentacoesEstoque: {
+          select: {
+            varianteId: true,
+            tipo: true,
+            quantidade: true,
+          },
+        },
+        pagamentos: {
+          select: {
+            id: true,
+            status: true,
+            valor: true,
+            metodo: true,
+            identificadorExterno: true,
+            transacoes: {
+              where: { tipo: "APROVACAO_MP" },
+              take: 2,
+            },
+          },
+        },
+      },
+    });
+
+    if (!pedido) {
+      throw new RevisaoPagamentoError(
+        "Pedido não encontrado.",
+        404
+      );
+    }
+
+    const pagamento = pedido.pagamentos.find(
+      (item) => item.id === prova.pagamentoId
+    );
+
+    const registro = pagamento?.transacoes[0];
+
+    if (
+      !pagamento ||
+      pagamento.status !== StatusPagamento.APROVADO ||
+      pagamento.identificadorExterno !== prova.orderId ||
+      pagamento.metodo !== prova.metodo ||
+      !pagamento.valor.equals(prova.valor) ||
+      !pedido.valorTotal.equals(prova.valor) ||
+      pagamento.transacoes.length !== 1 ||
+      !registro ||
+      registro.identificadorExterno !== prova.transacaoId ||
+      !registro.valor.equals(prova.valor)
+    ) {
+      throw new RevisaoPagamentoError(
+        "A aprovação local não corresponde ao pagamento consultado."
+      );
+    }
+
+    // Repetir uma confirmação concluída não duplica operações.
+    if (
+      registro.status === "CONFIRMADO" &&
+      [
+        "CONFIRMADO",
+        "EM_PREPARACAO",
+        "ENVIADO",
+        "ENTREGUE",
+      ].includes(pedido.status)
+    ) {
+      return {
+        pedidoId,
+        confirmado: true,
+        podeConfirmar: false,
+        reservaVencida: false,
+        motivo: "Este pedido já foi confirmado.",
+      };
+    }
+
+    const motivos: string[] = [];
+
+    if (pedido.status !== StatusPedido.AGUARDANDO_PAGAMENTO) {
+      motivos.push(
+        "O pedido não está aguardando pagamento; esta ação não reabre pedidos cancelados."
+      );
+    }
+
+    if (pedido.pagamentos.length !== 1) {
+      motivos.push(
+        "Existem outras tentativas financeiras no pedido."
+      );
+    }
+
+    if (registro.status !== "REVISAO_MANUAL") {
+      motivos.push(
+        "O comprovante não está disponível para revisão manual."
+      );
+    }
+
+    const esperadas = new Map<number, number>();
+    const reservadas = new Map<number, number>();
+    let reservaIntegra = pedido.itens.length > 0;
+
+    for (const item of pedido.itens) {
+      if (
+        item.varianteId === null ||
+        item.quantidade <= 0
+      ) {
+        reservaIntegra = false;
+        continue;
+      }
+
+      esperadas.set(
+        item.varianteId,
+        (esperadas.get(item.varianteId) ?? 0) +
+          item.quantidade
+      );
+    }
+
+    for (const movimento of pedido.movimentacoesEstoque) {
+      if (
+        movimento.tipo !== "RESERVA" ||
+        movimento.quantidade <= 0
+      ) {
+        reservaIntegra = false;
+        continue;
+      }
+
+      reservadas.set(
+        movimento.varianteId,
+        (reservadas.get(movimento.varianteId) ?? 0) +
+          movimento.quantidade
+      );
+    }
+
+    if (esperadas.size !== reservadas.size) {
+      reservaIntegra = false;
+    }
+
+    for (const [id, quantidade] of esperadas) {
+      if (reservadas.get(id) !== quantidade) {
+        reservaIntegra = false;
+      }
+    }
+
+    if (!reservaIntegra) {
+      motivos.push(
+        "O estoque original não está integralmente reservado ou houve outras movimentações."
+      );
+    }
+
+    const reservaVencida =
+      !pedido.reservaExpiraEm ||
+      pedido.reservaExpiraEm.getTime() <= Date.now();
+
+    const podeConfirmar = motivos.length === 0;
+
+    if (confirmar && !podeConfirmar) {
+      throw new RevisaoPagamentoError(
+        motivos.join(" ")
+      );
+    }
+
+    if (confirmar) {
+      // O estoque já foi reduzido na reserva.
+      await tx.pedido.update({
+        where: { id: pedidoId },
+        data: {
+          status: StatusPedido.CONFIRMADO,
+          reservaExpiraEm: null,
+        },
+      });
+
+      await tx.transacaoPagamento.update({
+        where: { id: registro.id },
+        data: { status: "CONFIRMADO" },
+      });
+
+      await tx.historicoPedido.create({
+        data: {
+          pedidoId,
+          status: StatusPedido.CONFIRMADO,
+          descricao:
+            `Pedido confirmado após revisão administrativa pelo usuário #${administradorId}. Pagamento e reserva conferidos.`,
+        },
+      });
+    }
+
+    return {
+      pedidoId,
+      confirmado: confirmar,
+      podeConfirmar: podeConfirmar && !confirmar,
+      reservaVencida,
+      motivo: confirmar
+        ? "Pedido confirmado após revisão administrativa."
+        : motivos.length > 0
+          ? motivos.join(" ")
+          : reservaVencida
+            ? "A reserva venceu, mas o estoque original permanece reservado. Você pode autorizar a confirmação."
+            : "Pagamento aprovado e estoque original reservado. Você pode autorizar a confirmação.",
+    };
+  });
+}

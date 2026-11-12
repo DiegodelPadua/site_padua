@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-
+import RevisaoPagamento from "./RevisaoPagamento";
 import {
   verificarAdministrador,
 } from "../../../src/utils/adminAuth";
@@ -234,6 +234,9 @@ export default async function PedidosAdminPage({
                 Pagamento aprovado — revisão necessária
                 antes de atender ou reembolsar.
               </p>
+            )}
+                        {emRevisao && (
+              <RevisaoPagamento pedidoId={pedido.id} />
             )}
 
             <details style={{ marginTop: 20 }}>

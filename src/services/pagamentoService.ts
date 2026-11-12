@@ -26,6 +26,9 @@ import {
   registrarIdentificadorMercadoPago,
   buscarPagamentoPorOrderMercadoPago,
   confirmarPagamentoMercadoPago,
+  buscarAprovacaoParaRevisao,
+  revisarAprovacaoNoBanco,
+  RevisaoPagamentoError,
 } from "../repositories/pagamentoRepository";
 // Serviços de criação e consulta de cobranças no Mercado Pago.
 import {
@@ -1219,4 +1222,152 @@ export async function processarNotificacaoMercadoPago(
       ? "PAGAMENTO_RECEBIDO_REVISAO_MANUAL"
       : "CONFIRMADO",
   };
+}
+
+/* Consulta o provedor novamente antes da confirmação administrativa. */
+export async function revisarPagamentoComoAdministrador(
+  pedidoId: number,
+  administradorId: number,
+  confirmar: boolean
+) {
+  if (
+    ![pedidoId, administradorId].every(
+      (id) => Number.isSafeInteger(id) && id > 0
+    ) ||
+    typeof confirmar !== "boolean"
+  ) {
+    throw new PagamentoServiceError(
+      "Dados da revisão inválidos.",
+      400,
+      "REVISAO_INVALIDA"
+    );
+  }
+
+  if (process.env.MERCADO_PAGO_CHECKOUT_MODO !== "teste") {
+    throw new PagamentoServiceError(
+      "A revisão desta integração está restrita ao modo de teste.",
+      409,
+      "MODO_INVALIDO"
+    );
+  }
+
+  const aprovacoes = await buscarAprovacaoParaRevisao(
+    pedidoId
+  );
+
+  if (
+    aprovacoes.length !== 1 ||
+    !aprovacoes[0].identificadorExterno
+  ) {
+    throw new PagamentoServiceError(
+      "É necessária uma única aprovação registrada e vinculada ao Mercado Pago.",
+      409,
+      "APROVACAO_INCONSISTENTE"
+    );
+  }
+
+  const pagamento = aprovacoes[0];
+
+  let order: Awaited<
+    ReturnType<typeof consultarOrderMercadoPago>
+  >;
+
+  let vendedorId: string;
+
+  try {
+    [order, vendedorId] = await Promise.all([
+      consultarOrderMercadoPago(
+        pagamento.identificadorExterno!
+      ),
+      consultarVendedorTesteAutenticado(),
+    ]);
+  } catch {
+    throw new PagamentoServiceError(
+      "Não foi possível conferir o pagamento e a conta de teste no Mercado Pago. Nenhuma confirmação foi feita.",
+      503,
+      "CONSULTA_INDISPONIVEL"
+    );
+  }
+
+  const valor = new Prisma.Decimal(order.valorTotal);
+  const transacao = order.transacoes[0];
+  const metodo = transacao?.payment_method;
+
+  const metodoConfirmado =
+    metodo?.id === "pix" &&
+    metodo.type === "bank_transfer"
+      ? MetodoPagamento.PIX
+      : metodo &&
+          [
+            "credit_card",
+            "debit_card",
+            "prepaid_card",
+          ].includes(metodo.type ?? "")
+        ? MetodoPagamento.CARTAO
+        : null;
+
+  if (
+    order.mercadoPagoOrderId !== pagamento.identificadorExterno ||
+    order.referenciaExterna !== String(pedidoId) ||
+    order.vendedorId !== vendedorId ||
+    order.liveMode === true ||
+    order.possuiAjustesFinanceiros ||
+    order.status !== "processed" ||
+    order.statusDetail !== "accredited" ||
+    !valor.isFinite() ||
+    valor.lessThanOrEqualTo(0) ||
+    !valor.equals(pagamento.valor) ||
+    !valor.equals(pagamento.pedido.valorTotal) ||
+    order.transacoes.length !== 1 ||
+    !transacao ||
+    transacao.status !== "processed" ||
+    transacao.status_detail !== "accredited" ||
+    !transacao.id ||
+    !/^[A-Za-z0-9_-]{1,150}$/.test(transacao.id) ||
+    !metodoConfirmado ||
+    pagamento.metodo !== metodoConfirmado ||
+    order.valorTotalPago === null ||
+    transacao.amount === undefined ||
+    transacao.paid_amount === undefined ||
+    !new Prisma.Decimal(order.valorTotalPago).equals(valor) ||
+    !new Prisma.Decimal(transacao.amount).equals(valor) ||
+    !new Prisma.Decimal(transacao.paid_amount).equals(valor)
+  ) {
+    throw new PagamentoServiceError(
+      "O provedor não confirmou uma aprovação compatível e sem ajustes financeiros. O pedido permanece em revisão.",
+      409,
+      "APROVACAO_DIVERGENTE"
+    );
+  }
+
+  try {
+    const resultado = await revisarAprovacaoNoBanco(
+      pedidoId,
+      administradorId,
+      {
+        pagamentoId: pagamento.id,
+        orderId: order.mercadoPagoOrderId,
+        transacaoId: transacao.id,
+        valor,
+        metodo: metodoConfirmado,
+      },
+      confirmar
+    );
+
+    return {
+      ...resultado,
+      valorTotal: valor.toFixed(2),
+      pagamentoConferido: true,
+    };
+  } catch (erro) {
+    if (erro instanceof RevisaoPagamentoError) {
+      throw new PagamentoServiceError(
+        erro.message,
+        erro.status,
+        "REVISAO_BLOQUEADA"
+      );
+    }
+
+    throw erro;
+  }
 }
