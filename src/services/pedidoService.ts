@@ -33,6 +33,7 @@ import {
   buscarPedidoPorChaveIdempotencia,
   registrarPedido,
   encerrarPedidoExpirado,
+  cancelarPedidoSemPagamento,
   ReinicioCheckoutError,
   consultarPedidosDoCliente,
 } from "../repositories/pedidoRepository";
@@ -876,7 +877,48 @@ export async function listarPedidosDoCliente(
     valorTotal: pedido.valorTotal.toFixed(2),
     ultimoPagamento:
       pedido.pagamentos[0]?.status ?? null,
+
+    podeCancelar:
+      pedido.status === "AGUARDANDO_PAGAMENTO" &&
+      pedido.pagamentos.length === 0,
+
     itens: pedido.itens,
     entrega: pedido.entrega,
   }));
+}
+/* Cancelamento solicitado pelo cliente, sem cobrança iniciada. */
+export async function cancelarPedidoDoCliente(
+  pedidoId: number,
+  usuarioId: number
+) {
+  if (
+    !inteiroPositivo(pedidoId) ||
+    !inteiroPositivo(usuarioId)
+  ) {
+    throw new PedidoServiceError(
+      "Identificação inválida.",
+      400
+    );
+  }
+
+  try {
+    await cancelarPedidoSemPagamento(
+      pedidoId,
+      usuarioId
+    );
+
+    return {
+      pedidoId,
+      status: "CANCELADO" as const,
+    };
+  } catch (erro) {
+    if (erro instanceof ReinicioCheckoutError) {
+      throw new PedidoServiceError(
+        erro.message,
+        erro.status
+      );
+    }
+
+    throw erro;
+  }
 }

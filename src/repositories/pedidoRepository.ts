@@ -667,10 +667,32 @@ export class ReinicioCheckoutError extends Error {
     this.name = "ReinicioCheckoutError";
   }
 }
-
 export async function encerrarPedidoExpirado(
   pedidoId: number,
   usuarioId: number
+) {
+  return encerrarPedidoSemPagamento(
+    pedidoId,
+    usuarioId,
+    true
+  );
+}
+
+export async function cancelarPedidoSemPagamento(
+  pedidoId: number,
+  usuarioId: number
+) {
+  return encerrarPedidoSemPagamento(
+    pedidoId,
+    usuarioId,
+    false
+  );
+}
+
+async function encerrarPedidoSemPagamento(
+  pedidoId: number,
+  usuarioId: number,
+  exigirReservaVencida: boolean
 ) {
   if (
     ![pedidoId, usuarioId].every(
@@ -726,7 +748,7 @@ export async function encerrarPedidoExpirado(
     // Não cancela cobranças externas.
     if (pedido.pagamentos.length > 0) {
       throw new ReinicioCheckoutError(
-        "Este pedido possui uma tentativa de pagamento. Sua situação precisa ser conferida antes de iniciar outra compra."
+        "Este pedido possui uma tentativa de pagamento. Sua situação precisa ser conferida antes de cancelar ou iniciar outra compra."
       );
     }
 
@@ -737,12 +759,17 @@ export async function encerrarPedidoExpirado(
       !jaEncerrado &&
       (
         pedido.status !== StatusPedido.AGUARDANDO_PAGAMENTO ||
-        !pedido.reservaExpiraEm ||
-        pedido.reservaExpiraEm.getTime() > Date.now()
+        (
+          exigirReservaVencida &&
+          (
+            !pedido.reservaExpiraEm ||
+            pedido.reservaExpiraEm.getTime() > Date.now()
+          )
+        )
       )
     ) {
       throw new ReinicioCheckoutError(
-        "Este pedido não pode ser reiniciado por vencimento da reserva."
+        "Este pedido não está disponível para este encerramento."
       );
     }
 
@@ -853,8 +880,9 @@ export async function encerrarPedidoExpirado(
             tipo: TipoMovimentacaoEstoque.LIBERACAO_RESERVA,
             saldoAnterior: variante.quantidade - quantidade,
             saldoPosterior: variante.quantidade,
-            motivo:
-              "Reserva vencida encerrada pelo cliente para iniciar nova compra.",
+            motivo: exigirReservaVencida
+              ? "Reserva vencida encerrada pelo cliente para iniciar nova compra."
+              : "Estoque liberado após cancelamento solicitado pelo cliente.",
           },
         });
       }
@@ -863,8 +891,9 @@ export async function encerrarPedidoExpirado(
         data: {
           pedidoId,
           status: StatusPedido.CANCELADO,
-          descricao:
-            "Reserva vencida encerrada pelo cliente, sem tentativa de pagamento. Estoque devolvido.",
+          descricao: exigirReservaVencida
+            ? "Reserva vencida encerrada pelo cliente, sem tentativa de pagamento. Estoque devolvido."
+            : "Pedido cancelado pelo cliente, sem tentativa de pagamento. Estoque devolvido.",
         },
       });
     }

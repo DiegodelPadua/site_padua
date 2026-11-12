@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -10,6 +10,7 @@ type Pedido = {
   criadoEm: string;
   valorTotal: string;
   ultimoPagamento: string | null;
+  podeCancelar: boolean;
 
   itens: Array<{
     nomeProduto: string;
@@ -61,9 +62,25 @@ export default function MeusPedidos() {
   const [erro, setErro] = useState("");
   const [atualizacao, setAtualizacao] = useState(0);
 
+    const [
+    confirmandoCancelamentoId,
+    setConfirmandoCancelamentoId,
+  ] = useState<number | null>(null);
+
+  const [cancelandoId, setCancelandoId] =
+    useState<number | null>(null);
+
+  const [mensagemCancelamento, setMensagemCancelamento] =
+    useState("");
+
+  const cancelamentoRef = useRef(false);
+
+
+
   useEffect(() => {
     const controller = new AbortController();
-
+    setConfirmandoCancelamentoId(null);
+    setMensagemCancelamento("");
     setCarregando(true);
     setErro("");
 
@@ -126,6 +143,83 @@ export default function MeusPedidos() {
     };
   }, [router, atualizacao]);
 
+    async function cancelarPedido(pedidoId: number) {
+    if (cancelamentoRef.current || carregando) return;
+
+    cancelamentoRef.current = true;
+    setCancelandoId(pedidoId);
+    setMensagemCancelamento("");
+
+    try {
+      const resposta = await fetch(
+        "/api/minha-conta/pedidos/cancelar",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ pedidoId }),
+        }
+      );
+
+      if (resposta.status === 401) {
+        setPedidos([]);
+        router.replace("/login");
+        return;
+      }
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(
+          typeof dados.erro === "string"
+            ? dados.erro
+            : "Não foi possível cancelar. Atualize os pedidos antes de tentar novamente."
+        );
+      }
+
+      if (
+        dados.pedidoId !== pedidoId ||
+        dados.status !== "CANCELADO"
+      ) {
+        throw new Error(
+          "Não foi possível confirmar o cancelamento. Atualize os pedidos para conferir."
+        );
+      }
+
+      // Atualiza a tela somente após a confirmação do servidor.
+      setPedidos((anteriores) =>
+        anteriores.map((pedido) =>
+          pedido.id === pedidoId
+            ? {
+                ...pedido,
+                status: "CANCELADO",
+                podeCancelar: false,
+              }
+            : pedido
+        )
+      );
+
+      setConfirmandoCancelamentoId(null);
+
+      setMensagemCancelamento(
+        `Pedido #${pedidoId} cancelado. O estoque reservado foi liberado.`
+      );
+    } catch (falha) {
+      setMensagemCancelamento(
+        falha instanceof Error
+          ? falha.message
+          : "Não foi possível confirmar o cancelamento. Atualize os pedidos para conferir."
+      );
+    } finally {
+      cancelamentoRef.current = false;
+      setCancelandoId(null);
+    }
+  }
+
+
   return (
     <section
       aria-labelledby="titulo-meus-pedidos"
@@ -146,8 +240,9 @@ export default function MeusPedidos() {
 
       <button
         type="button"
-        disabled={carregando}
+        disabled={carregando || cancelandoId !== null}
         onClick={() =>
+          !cancelamentoRef.current &&
           setAtualizacao((valor) => valor + 1)
         }
         style={{
@@ -174,6 +269,15 @@ export default function MeusPedidos() {
       )}
 
       {erro && <p role="alert">{erro}</p>}
+
+            {mensagemCancelamento && (
+        <p
+          role="status"
+          style={{ margin: "16px 0", lineHeight: 1.6 }}
+        >
+          {mensagemCancelamento}
+        </p>
+      )}
 
       {!carregando &&
         !erro &&
@@ -310,6 +414,104 @@ export default function MeusPedidos() {
                 .
               </p>
             </details>
+
+            {pedido.podeCancelar && (
+              <div style={{ marginTop: 24 }}>
+                {confirmandoCancelamentoId === pedido.id ? (
+                  <div
+                    role="group"
+                    aria-label={`Confirmar cancelamento do pedido ${pedido.id}`}
+                  >
+                    <p
+                      style={{
+                        fontSize: 14,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      Deseja cancelar o pedido #{pedido.id}?
+                      Ele ficará no histórico e o estoque
+                      reservado será liberado.
+                    </p>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 12,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void cancelarPedido(pedido.id)
+                        }
+                        disabled={
+                          carregando ||
+                          cancelandoId !== null
+                        }
+                        style={{
+                          padding: "14px 18px",
+                          background: "#111",
+                          color: "#fff",
+                          border: "1px solid #111",
+                          cursor:
+                            cancelandoId !== null
+                              ? "wait"
+                              : "pointer",
+                        }}
+                      >
+                        {cancelandoId === pedido.id
+                          ? "CANCELANDO..."
+                          : "CONFIRMAR CANCELAMENTO"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmandoCancelamentoId(null)
+                        }
+                        disabled={
+                          carregando ||
+                          cancelandoId !== null
+                        }
+                        style={{
+                          padding: "14px 18px",
+                          background: "transparent",
+                          color: "#111",
+                          border: "1px solid #111",
+                          cursor: "pointer",
+                        }}
+                      >
+                        MANTER PEDIDO
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMensagemCancelamento("");
+                      setConfirmandoCancelamentoId(
+                        pedido.id
+                      );
+                    }}
+                    disabled={
+                      carregando ||
+                      cancelandoId !== null
+                    }
+                    style={{
+                      padding: "14px 18px",
+                      background: "transparent",
+                      color: "#111",
+                      border: "1px solid #111",
+                      cursor: "pointer",
+                    }}
+                  >
+                    CANCELAR PEDIDO
+                  </button>
+                )}
+              </div>
+            )}
           </article>
         ))}
     </section>
