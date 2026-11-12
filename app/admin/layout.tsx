@@ -101,6 +101,13 @@ export default async function AdminLayout({
             </Link>
 
             <Link
+              href="/admin/pedidos"
+              style={estiloLink}
+            >
+              PEDIDOS
+            </Link>
+
+            <Link
               href="/"
               style={{
                 ...estiloLink,

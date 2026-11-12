@@ -53,9 +53,9 @@ const modulos = [
   {
     titulo: "PEDIDOS",
     descricao:
-      "Acompanhe compras, pagamentos e entregas.",
-    href: "",
-    disponivel: false,
+      "Acompanhe compras, pagamentos e pedidos cancelados.",
+    href: "/admin/pedidos",
+    disponivel: true,
   },
   {
     titulo: "CLIENTES",
@@ -97,15 +97,28 @@ export default async function AdminPage() {
      A consulta só acontece após verificar o administrador.
      ======================================================= */
 
-  const [totalProdutos, produtosPublicados] =
-    await Promise.all([
-      prisma.produto.count(),
-      prisma.produto.count({
-        where: {
-          ativo: true,
-        },
-      }),
-    ]);
+  const [
+    totalProdutos,
+    produtosPublicados,
+    totalPedidos,
+    pedidosCancelados,
+  ] = await Promise.all([
+    prisma.produto.count(),
+
+    prisma.produto.count({
+      where: {
+        ativo: true,
+      },
+    }),
+
+    prisma.pedido.count(),
+
+    prisma.pedido.count({
+      where: {
+        status: "CANCELADO",
+      },
+    }),
+  ]);
 
   /* =======================================================
      3. INDICADORES DO PAINEL
@@ -122,8 +135,8 @@ export default async function AdminPage() {
     },
     {
       titulo: "PEDIDOS",
-      valor: "—",
-      descricao: "Integração pendente",
+      valor: String(totalPedidos),
+      descricao: `${pedidosCancelados} cancelado(s)`,
     },
     {
       titulo: "CLIENTES",
@@ -218,6 +231,32 @@ export default async function AdminPage() {
           >
             CATEGORIAS
           </Link>
+
+                 <Link
+         href="/admin/categorias"
+         style={estiloNavegacao}
+       >
+         CATEGORIAS
+       </Link>
+
+       <Link
+         href="/admin/pedidos"
+         style={estiloNavegacao}
+       >
+         PEDIDOS
+       </Link>
+
+       <Link
+         href="/"
+         style={{
+           ...estiloNavegacao,
+           background: "#ffffff",
+           color: "#171717",
+           border: "1px solid #171717",
+         }}
+       >
+         VER LOJA ↗
+       </Link>
 
           <Link
             href="/"

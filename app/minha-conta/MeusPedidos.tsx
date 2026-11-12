@@ -189,16 +189,10 @@ export default function MeusPedidos() {
         );
       }
 
-      // Atualiza a tela somente após a confirmação do servidor.
+      // Retira da lista após o servidor confirmar o cancelamento.
       setPedidos((anteriores) =>
-        anteriores.map((pedido) =>
-          pedido.id === pedidoId
-            ? {
-                ...pedido,
-                status: "CANCELADO",
-                podeCancelar: false,
-              }
-            : pedido
+        anteriores.filter(
+          (pedido) => pedido.id !== pedidoId
         )
       );
 
@@ -283,7 +277,7 @@ export default function MeusPedidos() {
         !erro &&
         pedidos.length === 0 && (
           <p>
-            Você ainda não tem pedidos registrados.{" "}
+          Nenhum pedido para acompanhar no momento.{" "}
             <Link href="/">Conhecer a loja</Link>
           </p>
         )}
@@ -429,7 +423,7 @@ export default function MeusPedidos() {
                       }}
                     >
                       Deseja cancelar o pedido #{pedido.id}?
-                      Ele ficará no histórico e o estoque
+                      Ele sairá desta lista e o estoque
                       reservado será liberado.
                     </p>
 

@@ -925,6 +925,20 @@ export async function consultarPedidosDoCliente(
   return prisma.pedido.findMany({
     where: {
       usuarioId,
+
+      // Oculta somente cancelados sem tentativa financeira.
+      OR: [
+        {
+          status: {
+            not: StatusPedido.CANCELADO,
+          },
+        },
+        {
+          pagamentos: {
+            some: {},
+          },
+        },
+      ],
     },
     orderBy: {
       id: "desc",
@@ -959,6 +973,92 @@ export async function consultarPedidosDoCliente(
         select: {
           transportadora: true,
           codigoRastreamento: true,
+        },
+      },
+    },
+  });
+}
+/* Consulta administrativa.
+   O chamador deve verificar o perfil ADMIN antes de utilizá-la. */
+export async function consultarPedidosAdministrativos(
+  filtro: "ativos" | "cancelados" | "todos",
+  antesDe?: number
+) {
+  if (
+    !["ativos", "cancelados", "todos"].includes(filtro) ||
+    (
+      antesDe !== undefined &&
+      (
+        !Number.isSafeInteger(antesDe) ||
+        antesDe <= 0 ||
+        antesDe > 2147483647
+      )
+    )
+  ) {
+    throw new Error("Filtro de pedidos inválido.");
+  }
+
+  return prisma.pedido.findMany({
+    where: {
+      ...(
+        filtro === "cancelados"
+          ? { status: StatusPedido.CANCELADO }
+          : filtro === "ativos"
+            ? {
+                status: {
+                  not: StatusPedido.CANCELADO,
+                },
+              }
+            : {}
+      ),
+
+      ...(
+        antesDe !== undefined
+          ? { id: { lt: antesDe } }
+          : {}
+      ),
+    },
+
+    orderBy: { id: "desc" },
+
+    // O registro adicional identifica se existe outra página.
+    take: 21,
+
+    select: {
+      id: true,
+      status: true,
+      criadoEm: true,
+      valorTotal: true,
+
+      usuario: {
+        select: {
+          nome: true,
+          sobrenome: true,
+          email: true,
+        },
+      },
+
+      itens: {
+        select: {
+          nomeProduto: true,
+          cor: true,
+          tamanho: true,
+          quantidade: true,
+        },
+      },
+
+      pagamentos: {
+        orderBy: { id: "desc" },
+        take: 1,
+        select: { status: true },
+      },
+
+      historico: {
+        orderBy: { id: "desc" },
+        take: 3,
+        select: {
+          criadoEm: true,
+          descricao: true,
         },
       },
     },
