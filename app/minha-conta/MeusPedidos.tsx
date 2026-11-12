@@ -228,8 +228,11 @@ export default function MeusPedidos() {
                 fontWeight: 600,
               }}
             >
-              {situacoes[pedido.status] ??
-                "Situação em análise"}
+              {pedido.status === "AGUARDANDO_PAGAMENTO" &&
+              pedido.ultimoPagamento === "APROVADO"
+                ? "Pagamento aprovado — pedido em revisão"
+                : situacoes[pedido.status] ??
+                  "Situação em análise"}
             </p>
 
             <p
