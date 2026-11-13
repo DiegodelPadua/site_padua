@@ -724,9 +724,27 @@ async function encerrarPedidoSemPagamento(
       select: {
         status: true,
         reservaExpiraEm: true,
+        valorTotal: true,
+
         pagamentos: {
-          select: { id: true },
-          take: 1,
+          take: 2,
+          select: {
+            id: true,
+            status: true,
+            valor: true,
+            pagoEm: true,
+            identificadorExterno: true,
+
+            transacoes: {
+              take: 2,
+              select: {
+                tipo: true,
+                status: true,
+                identificadorExterno: true,
+                valor: true,
+              },
+            },
+          },
         },
         itens: {
           select: {
@@ -744,9 +762,30 @@ async function encerrarPedidoSemPagamento(
       },
     });
 
-    // Qualquer tentativa financeira bloqueia este caminho.
-    // Não cancela cobranças externas.
-    if (pedido.pagamentos.length > 0) {
+    // Permite retomar uma compra encerrada somente
+    // quando sua expiração já foi conciliada.
+    const pagamentoEncerrado = pedido.pagamentos[0];
+
+    const registroExpiracao =
+      pagamentoEncerrado?.transacoes[0];
+
+    const expiracaoConciliada =
+      pedido.status === StatusPedido.CANCELADO &&
+      pedido.pagamentos.length === 1 &&
+      pagamentoEncerrado?.status === StatusPagamento.EXPIRADO &&
+      pagamentoEncerrado.pagoEm === null &&
+      pagamentoEncerrado.transacoes.length === 1 &&
+      registroExpiracao?.tipo === "EXPIRACAO_MP" &&
+      registroExpiracao.status === "CONCILIADO" &&
+      registroExpiracao.identificadorExterno ===
+        pagamentoEncerrado.identificadorExterno &&
+      registroExpiracao.valor.equals(pagamentoEncerrado.valor) &&
+      pagamentoEncerrado.valor.equals(pedido.valorTotal);
+
+    if (
+      pedido.pagamentos.length > 0 &&
+      !expiracaoConciliada
+    ) {
       throw new ReinicioCheckoutError(
         "Este pedido possui uma tentativa de pagamento. Sua situação precisa ser conferida antes de cancelar ou iniciar outra compra."
       );
@@ -935,7 +974,30 @@ export async function consultarPedidosDoCliente(
         },
         {
           pagamentos: {
-            some: {},
+            some: {
+              OR: [
+                {
+                  status: {
+                    not: StatusPagamento.EXPIRADO,
+                  },
+                },
+                {
+                  transacoes: {
+                    none: {
+                      tipo: "EXPIRACAO_MP",
+                      status: "CONCILIADO",
+                    },
+                  },
+                },
+                {
+                  transacoes: {
+                    some: {
+                      tipo: "APROVACAO_MP",
+                    },
+                  },
+                },
+              ],
+            },
           },
         },
       ],
@@ -1062,5 +1124,324 @@ export async function consultarPedidosAdministrativos(
         },
       },
     },
+  });
+}
+
+export class ConciliacaoExpiradaError extends Error {
+  constructor(
+    mensagem: string,
+    public readonly status: number = 409
+  ) {
+    super(mensagem);
+    this.name = "ConciliacaoExpiradaError";
+  }
+}
+
+/* Recebe somente a prova conferida pelo serviço no Mercado Pago. */
+export async function conciliarReservaDeCobrancaExpirada(
+  pedidoId: number,
+  administradorId: number,
+  prova: {
+    pagamentoId: number;
+    orderId: string;
+    valor: Prisma.Decimal;
+  }
+) {
+  if (
+    ![pedidoId, administradorId, prova.pagamentoId].every(
+      (id) => Number.isSafeInteger(id) && id > 0
+    ) ||
+    !/^ORD[A-Za-z0-9_-]{1,100}$/.test(prova.orderId) ||
+    !prova.valor.isFinite() ||
+    prova.valor.lessThanOrEqualTo(0) ||
+    prova.valor.decimalPlaces() > 2
+  ) {
+    throw new ConciliacaoExpiradaError(
+      "Dados de conciliação inválidos.",
+      400
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const linhas = await tx.$queryRaw<Array<{ id: number }>>`
+      SELECT id FROM pedidos
+      WHERE id = ${pedidoId}
+      FOR UPDATE
+    `;
+
+    if (linhas.length !== 1) {
+      throw new ConciliacaoExpiradaError(
+        "Pedido não encontrado.",
+        404
+      );
+    }
+
+    const administrador = await tx.usuario.findUnique({
+      where: { id: administradorId },
+      select: { perfil: true },
+    });
+
+    if (administrador?.perfil !== "ADMIN") {
+      throw new ConciliacaoExpiradaError(
+        "Acesso administrativo necessário.",
+        403
+      );
+    }
+
+    const pedido = await tx.pedido.findUniqueOrThrow({
+      where: { id: pedidoId },
+      select: {
+        status: true,
+        valorTotal: true,
+
+        itens: {
+          select: {
+            varianteId: true,
+            quantidade: true,
+          },
+        },
+
+        movimentacoesEstoque: {
+          select: {
+            varianteId: true,
+            tipo: true,
+            quantidade: true,
+          },
+        },
+
+        entrega: {
+          select: {
+            status: true,
+            codigoRastreamento: true,
+            dataPostagem: true,
+            melhorEnvioId: true,
+          },
+        },
+
+        pagamentos: {
+          select: {
+            id: true,
+            status: true,
+            valor: true,
+            identificadorExterno: true,
+            pagoEm: true,
+
+            transacoes: {
+              select: {
+                tipo: true,
+                status: true,
+                identificadorExterno: true,
+                valor: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const pagamento = pedido.pagamentos[0];
+
+    if (
+      pedido.pagamentos.length !== 1 ||
+      !pagamento ||
+      pagamento.id !== prova.pagamentoId ||
+      pagamento.identificadorExterno !== prova.orderId ||
+      pagamento.pagoEm !== null ||
+      !pedido.valorTotal.equals(prova.valor) ||
+      !pagamento.valor.equals(prova.valor)
+    ) {
+      throw new ConciliacaoExpiradaError(
+        "O pedido e sua tentativa financeira exigem revisão."
+      );
+    }
+
+    const registro = pagamento.transacoes[0];
+
+    const jaConciliado =
+      pagamento.transacoes.length === 1 &&
+      registro?.tipo === "EXPIRACAO_MP" &&
+      registro.status === "CONCILIADO" &&
+      registro.identificadorExterno === prova.orderId &&
+      registro.valor.equals(prova.valor) &&
+      pagamento.status === StatusPagamento.EXPIRADO &&
+      pedido.status === StatusPedido.CANCELADO;
+
+    if (
+      !jaConciliado &&
+      (
+        pagamento.transacoes.length > 0 ||
+        pedido.status !== StatusPedido.AGUARDANDO_PAGAMENTO ||
+        (
+          pagamento.status !== StatusPagamento.PENDENTE &&
+          pagamento.status !== StatusPagamento.PROCESSANDO
+        )
+      )
+    ) {
+      throw new ConciliacaoExpiradaError(
+        "O estado financeiro ou operacional mudou. Atualize a consulta antes de continuar."
+      );
+    }
+
+    if (
+      pedido.entrega &&
+      (
+        pedido.entrega.codigoRastreamento ||
+        pedido.entrega.dataPostagem ||
+        pedido.entrega.melhorEnvioId ||
+        pedido.entrega.status !== (
+          jaConciliado
+            ? StatusEntrega.CANCELADO
+            : StatusEntrega.PENDENTE
+        )
+      )
+    ) {
+      throw new ConciliacaoExpiradaError(
+        "A entrega possui movimentações que exigem revisão."
+      );
+    }
+
+    const itens = new Map<number, number>();
+    const reservas = new Map<number, number>();
+    const liberacoes = new Map<number, number>();
+
+    for (const item of pedido.itens) {
+      if (
+        item.varianteId === null ||
+        item.quantidade <= 0
+      ) {
+        throw new ConciliacaoExpiradaError(
+          "Os itens do pedido exigem revisão."
+        );
+      }
+
+      itens.set(
+        item.varianteId,
+        (itens.get(item.varianteId) ?? 0) +
+          item.quantidade
+      );
+    }
+
+    for (const movimento of pedido.movimentacoesEstoque) {
+      const mapa =
+        movimento.tipo === TipoMovimentacaoEstoque.RESERVA
+          ? reservas
+          : movimento.tipo ===
+              TipoMovimentacaoEstoque.LIBERACAO_RESERVA
+            ? liberacoes
+            : null;
+
+      if (
+        !mapa ||
+        movimento.quantidade <= 0 ||
+        !itens.has(movimento.varianteId)
+      ) {
+        throw new ConciliacaoExpiradaError(
+          "As movimentações de estoque exigem revisão."
+        );
+      }
+
+      mapa.set(
+        movimento.varianteId,
+        (mapa.get(movimento.varianteId) ?? 0) +
+          movimento.quantidade
+      );
+    }
+
+    if (
+      itens.size === 0 ||
+      reservas.size !== itens.size
+    ) {
+      throw new ConciliacaoExpiradaError(
+        "Não foi possível conferir a reserva original."
+      );
+    }
+
+    for (const [varianteId, quantidade] of itens) {
+      if (
+        reservas.get(varianteId) !== quantidade ||
+        (liberacoes.get(varianteId) ?? 0) !==
+          (jaConciliado ? quantidade : 0)
+      ) {
+        throw new ConciliacaoExpiradaError(
+          "A reserva e suas liberações não correspondem aos itens."
+        );
+      }
+    }
+
+    // Repetir a solicitação não devolve estoque novamente.
+    if (jaConciliado) {
+      return {
+        pedidoId,
+        conciliado: true,
+        jaConciliado: true,
+      };
+    }
+
+    await tx.pagamento.update({
+      where: { id: pagamento.id },
+      data: { status: StatusPagamento.EXPIRADO },
+    });
+
+    await tx.pedido.update({
+      where: { id: pedidoId },
+      data: { status: StatusPedido.CANCELADO },
+    });
+
+    await tx.entrega.updateMany({
+      where: { pedidoId },
+      data: { status: StatusEntrega.CANCELADO },
+    });
+
+    await tx.transacaoPagamento.create({
+      data: {
+        pagamentoId: pagamento.id,
+        tipo: "EXPIRACAO_MP",
+        status: "CONCILIADO",
+        identificadorExterno: prova.orderId,
+        valor: prova.valor,
+      },
+    });
+
+    const itensOrdenados = [...itens].sort(
+      (a, b) => a[0] - b[0]
+    );
+
+    for (const [varianteId, quantidade] of itensOrdenados) {
+      const variante = await tx.varianteProduto.update({
+        where: { id: varianteId },
+        data: {
+          quantidade: { increment: quantidade },
+        },
+        select: { quantidade: true },
+      });
+
+      await tx.movimentacaoEstoque.create({
+        data: {
+          pedidoId,
+          varianteId,
+          quantidade,
+          tipo: TipoMovimentacaoEstoque.LIBERACAO_RESERVA,
+          saldoAnterior: variante.quantidade - quantidade,
+          saldoPosterior: variante.quantidade,
+          motivo:
+            "Reserva liberada após conciliação de Order expirada no Mercado Pago.",
+        },
+      });
+    }
+
+    await tx.historicoPedido.create({
+      data: {
+        pedidoId,
+        status: StatusPedido.CANCELADO,
+        descricao:
+          `Cobrança expirada conciliada pelo administrador #${administradorId}. Order encerrada e sem transações; pagamento expirado, pedido cancelado e estoque devolvido.`,
+      },
+    });
+
+    return {
+      pedidoId,
+      conciliado: true,
+      jaConciliado: false,
+    };
   });
 }

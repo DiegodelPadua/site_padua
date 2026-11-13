@@ -16,6 +16,10 @@
 
 // Tipos do Prisma utilizados nos cálculos financeiros.
 import { MetodoPagamento, Prisma } from "@prisma/client";
+import {
+  conciliarReservaDeCobrancaExpirada,
+  ConciliacaoExpiradaError,
+} from "../repositories/pedidoRepository";
 
 // Operações financeiras realizadas no MySQL.
 import {
@@ -1489,3 +1493,73 @@ export async function revisarPagamentoComoAdministrador(
       consultadoEm: new Date().toISOString(),
     };
   }
+  /* Consulta novamente o provedor antes de alterar os registros locais. */
+export async function conciliarCobrancaExpiradaComoAdministrador(
+  pedidoId: number,
+  administradorId: number
+) {
+  if (
+    !Number.isSafeInteger(administradorId) ||
+    administradorId <= 0
+  ) {
+    throw new PagamentoServiceError(
+      "Administrador inválido.",
+      403,
+      "ADMIN_INVALIDO"
+    );
+  }
+
+  const consulta =
+    await consultarCobrancaComoAdministrador(pedidoId);
+
+  if (
+    !["canceled", "cancelled"].includes(
+      consulta.statusMercadoPago
+    ) ||
+    consulta.detalheMercadoPago !== "expired" ||
+    consulta.transacoes.length !== 0 ||
+    consulta.possuiAjustesFinanceiros ||
+    (
+      consulta.valorTotalPago !== null &&
+      !new Prisma.Decimal(
+        consulta.valorTotalPago
+      ).equals(0)
+    )
+  ) {
+    throw new PagamentoServiceError(
+      "A consulta atual não confirmou uma Order expirada, encerrada e sem transações ou ajustes. Nenhuma reserva foi liberada.",
+      409,
+      "EXPIRACAO_NAO_CONFIRMADA"
+    );
+  }
+
+  try {
+    const resultado =
+      await conciliarReservaDeCobrancaExpirada(
+        pedidoId,
+        administradorId,
+        {
+          pagamentoId: consulta.pagamentoId,
+          orderId: consulta.orderId,
+          valor: new Prisma.Decimal(consulta.valorTotal),
+        }
+      );
+
+    return {
+      ...resultado,
+      mensagem: resultado.jaConciliado
+        ? "Esta conciliação já estava registrada. Não houve nova liberação de estoque."
+        : "Cobrança expirada conciliada. Pedido cancelado e estoque reservado liberado.",
+    };
+  } catch (erro) {
+    if (erro instanceof ConciliacaoExpiradaError) {
+      throw new PagamentoServiceError(
+        erro.message,
+        erro.status,
+        "CONCILIACAO_EXPIRADA_BLOQUEADA"
+      );
+    }
+
+    throw erro;
+  }
+}
