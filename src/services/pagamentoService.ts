@@ -29,6 +29,7 @@ import {
   buscarAprovacaoParaRevisao,
   revisarAprovacaoNoBanco,
   RevisaoPagamentoError,
+  buscarCobrancasParaConsulta,
 } from "../repositories/pagamentoRepository";
 // Serviços de criação e consulta de cobranças no Mercado Pago.
 import {
@@ -1371,3 +1372,120 @@ export async function revisarPagamentoComoAdministrador(
     throw erro;
   }
 }
+
+/* Consulta somente leitura.
+   Não concilia nem cancela a cobrança. */
+   export async function consultarCobrancaComoAdministrador(
+    pedidoId: number
+  ) {
+    if (
+      !Number.isSafeInteger(pedidoId) ||
+      pedidoId <= 0
+    ) {
+      throw new PagamentoServiceError(
+        "Pedido inválido.",
+        400,
+        "PEDIDO_INVALIDO"
+      );
+    }
+  
+    if (process.env.MERCADO_PAGO_CHECKOUT_MODO !== "teste") {
+      throw new PagamentoServiceError(
+        "Esta consulta está restrita ao modo de teste.",
+        409,
+        "MODO_INVALIDO"
+      );
+    }
+  
+    const cobrancas = await buscarCobrancasParaConsulta(
+      pedidoId
+    );
+  
+    if (cobrancas.length === 0) {
+      throw new PagamentoServiceError(
+        "Este pedido não possui tentativa de pagamento.",
+        404,
+        "COBRANCA_AUSENTE"
+      );
+    }
+  
+    if (cobrancas.length !== 1) {
+      throw new PagamentoServiceError(
+        "Há mais de uma tentativa financeira. É necessária uma conferência específica de cada cobrança.",
+        409,
+        "MULTIPLAS_TENTATIVAS"
+      );
+    }
+  
+    const pagamento = cobrancas[0];
+  
+    if (!pagamento.identificadorExterno) {
+      throw new PagamentoServiceError(
+        "A tentativa não possui uma Order vinculada. Não é seguro presumir que não houve cobrança.",
+        409,
+        "VINCULO_AUSENTE"
+      );
+    }
+  
+    let order: Awaited<
+      ReturnType<typeof consultarOrderMercadoPago>
+    >;
+  
+    let vendedorId: string;
+  
+    try {
+      [order, vendedorId] = await Promise.all([
+        consultarOrderMercadoPago(
+          pagamento.identificadorExterno
+        ),
+        consultarVendedorTesteAutenticado(),
+      ]);
+    } catch {
+      throw new PagamentoServiceError(
+        "Não foi possível consultar a cobrança e a conta de teste no Mercado Pago. Nenhum registro foi alterado.",
+        503,
+        "CONSULTA_INDISPONIVEL"
+      );
+    }
+  
+    const valor = new Prisma.Decimal(order.valorTotal);
+  
+    if (
+      order.mercadoPagoOrderId !== pagamento.identificadorExterno ||
+      order.referenciaExterna !== String(pedidoId) ||
+      order.vendedorId !== vendedorId ||
+      order.liveMode === true ||
+      !valor.isFinite() ||
+      valor.lessThanOrEqualTo(0) ||
+      !valor.equals(pagamento.valor) ||
+      !valor.equals(pagamento.pedido.valorTotal)
+    ) {
+      throw new PagamentoServiceError(
+        "Os dados do provedor não correspondem ao pedido, valor ou vendedor esperado.",
+        409,
+        "DADOS_DIVERGENTES"
+      );
+    }
+  
+    return {
+      pedidoId,
+      pagamentoId: pagamento.id,
+      orderId: order.mercadoPagoOrderId,
+      statusNoSite: pagamento.status,
+      statusPedidoNoSite: pagamento.pedido.status,
+      statusMercadoPago: order.status,
+      detalheMercadoPago: order.statusDetail ?? null,
+      valorTotal: valor.toFixed(2),
+      valorTotalPago: order.valorTotalPago,
+      possuiAjustesFinanceiros:
+        order.possuiAjustesFinanceiros,
+  
+      transacoes: order.transacoes.map((transacao) => ({
+        status: transacao.status ?? null,
+        detalhe: transacao.status_detail ?? null,
+        valorPago: transacao.paid_amount ?? null,
+      })),
+  
+      consultadoEm: new Date().toISOString(),
+    };
+  }

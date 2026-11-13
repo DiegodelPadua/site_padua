@@ -1514,3 +1514,38 @@ export async function revisarAprovacaoNoBanco(
     };
   });
 }
+/* Consulta local para diagnóstico administrativo.
+   Não altera registros. */
+   export async function buscarCobrancasParaConsulta(
+    pedidoId: number
+  ) {
+    if (
+      !Number.isSafeInteger(pedidoId) ||
+      pedidoId <= 0
+    ) {
+      throw new Error("Pedido inválido.");
+    }
+  
+    return prisma.pagamento.findMany({
+      where: {
+        pedidoId,
+      },
+      orderBy: {
+        id: "desc",
+      },
+      take: 2,
+      select: {
+        id: true,
+        pedidoId: true,
+        status: true,
+        valor: true,
+        identificadorExterno: true,
+        pedido: {
+          select: {
+            status: true,
+            valorTotal: true,
+          },
+        },
+      },
+    });
+  }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import RevisaoPagamento from "./RevisaoPagamento";
+import ConsultaCobranca from "./ConsultaCobranca";
 import {
   verificarAdministrador,
 } from "../../../src/utils/adminAuth";
@@ -237,6 +238,10 @@ export default async function PedidosAdminPage({
             )}
                         {emRevisao && (
               <RevisaoPagamento pedidoId={pedido.id} />
+            )}
+
+            {pagamento && (
+              <ConsultaCobranca pedidoId={pedido.id} />
             )}
 
             <details style={{ marginTop: 20 }}>
