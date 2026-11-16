@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import SolicitarCancelamento from "./SolicitarCancelamento";
 
 type Pedido = {
   id: number;
@@ -506,6 +507,11 @@ export default function MeusPedidos() {
                 )}
               </div>
             )}
+
+            {pedido.ultimoPagamento === "APROVADO" && (
+              <SolicitarCancelamento pedidoId={pedido.id} />
+            )}
+
           </article>
         ))}
     </section>

@@ -21,6 +21,9 @@ model Usuario {
   enderecos    Endereco[]
   pedidos      Pedido[]
 
+  // Solicitações analisadas por este administrador.
+  cancelamentosAnalisados SolicitacaoCancelamento[] @relation("AnaliseCancelamento")
+
   @@map("usuarios")
 }
 
@@ -182,6 +185,9 @@ model Pedido {
 
   // Histórico de acontecimentos do pedido.
   historico HistoricoPedido[]
+
+  // Histórico de solicitações de cancelamento deste pedido.
+  solicitacoesCancelamento SolicitacaoCancelamento[]
 
   // Cliente responsável pelo pedido.
   usuario Usuario @relation(fields: [usuarioId], references: [id])
@@ -412,4 +418,34 @@ model HistoricoPedido {
   @@index([pedidoId, criadoEm])
   // Nome físico da tabela no MySQL.
   @@map("historico_pedidos")
+}
+
+// A análise do cancelamento é independente do pagamento e da entrega.
+// Aprovar uma solicitação não significa que houve reembolso.
+enum StatusSolicitacaoCancelamento {
+  SOLICITADA
+  EM_ANALISE
+  RECUSADA
+  APROVADA_PARA_REEMBOLSO
+}
+
+model SolicitacaoCancelamento {
+  id              Int                           @id @default(autoincrement())
+  pedidoId        Int
+  status          StatusSolicitacaoCancelamento @default(SOLICITADA)
+  motivo          String                        @db.VarChar(1000)
+  respostaAdmin   String?                       @db.VarChar(1000)
+  administradorId Int?
+  criadoEm        DateTime                      @default(now())
+  atualizadoEm    DateTime                      @updatedAt
+  analisadoEm     DateTime?
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  administrador Usuario? @relation("AnaliseCancelamento", fields: [administradorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([pedidoId, criadoEm])
+  @@index([status, criadoEm])
+  @@index([administradorId])
+  @@map("solicitacoes_cancelamento")
 }
