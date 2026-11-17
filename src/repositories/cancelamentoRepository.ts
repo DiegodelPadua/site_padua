@@ -28,6 +28,14 @@ const campos = {
   respostaAdmin: true,
   criadoEm: true,
   analisadoEm: true,
+
+  reembolso: {
+    select: {
+      status: true,
+      valor: true,
+      confirmadoEm: true,
+    },
+  },
 } as const;
 
 export async function consultarCancelamentoDoCliente(

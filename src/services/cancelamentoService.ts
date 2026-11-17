@@ -99,6 +99,17 @@ export async function listarSolicitacoesAdministrativas(
       atualizadoEm: item.atualizadoEm.toISOString(),
       analisadoEm:
         item.analisadoEm?.toISOString() ?? null,
+              reembolso: item.reembolso
+        ? {
+            status: item.reembolso.status,
+            valor:
+              item.reembolso.valor.toFixed(2),
+            confirmadoEm:
+              item.reembolso.confirmadoEm
+                ?.toISOString() ?? null,
+          }
+        : null,
+        
       situacaoPedido: pedido.status,
       situacaoEntrega:
         pedido.entrega?.status ?? null,

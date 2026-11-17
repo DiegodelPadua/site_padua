@@ -11,6 +11,11 @@ type Solicitacao = {
   respostaAdmin: string | null;
   criadoEm: string;
   analisadoEm: string | null;
+    reembolso?: {
+    status: string;
+    valor: string;
+    confirmadoEm: string | null;
+  } | null;
 };
 
 const nomes: Record<string, string> = {
@@ -236,8 +241,10 @@ export default function SolicitarCancelamento({
         <div>
           <p role="status">
             <strong>
-              {nomes[solicitacao.status] ??
-                "Situação em análise"}
+              {solicitacao.reembolso?.status === "CONFIRMADO"
+                ? "Reembolso integral confirmado pelo Mercado Pago"
+                : nomes[solicitacao.status] ??
+                  "Situação em análise"}
             </strong>
           </p>
 

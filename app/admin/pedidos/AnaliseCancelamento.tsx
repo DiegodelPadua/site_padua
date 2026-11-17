@@ -16,7 +16,14 @@ type SolicitacaoAdmin = {
   situacaoPedido: string;
   situacaoEntrega: string | null;
   codigoRastreamento: string | null;
+    reembolso?: {
+    status: string;
+    valor: string;
+    confirmadoEm: string | null;
+  } | null;
 };
+
+import ReembolsoCancelamento from "./ReembolsoCancelamento";
 
 const nomes: Record<string, string> = {
   SOLICITADA: "Aguardando análise",
@@ -191,8 +198,10 @@ export default function AnaliseCancelamento({
 
       <p>
         <strong>
-          {nomes[solicitacao.status] ??
-            "Situação em análise"}
+            {solicitacao.reembolso?.status === "CONFIRMADO"
+            ? "Reembolso integral confirmado"
+            : nomes[solicitacao.status] ??
+                "Situação em análise"}
         </strong>
       </p>
 
@@ -386,6 +395,13 @@ export default function AnaliseCancelamento({
             </div>
           )}
         </div>
+      )}
+            {solicitacao.status ===
+        "APROVADA_PARA_REEMBOLSO" && (
+        <ReembolsoCancelamento
+          solicitacaoId={solicitacao.id}
+          reembolso={solicitacao.reembolso}
+        />
       )}
     </section>
   );

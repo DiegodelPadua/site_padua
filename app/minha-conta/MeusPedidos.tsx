@@ -508,9 +508,13 @@ export default function MeusPedidos() {
               </div>
             )}
 
-            {pedido.ultimoPagamento === "APROVADO" && (
-              <SolicitarCancelamento pedidoId={pedido.id} />
-            )}
+              {["APROVADO", "ESTORNADO"].includes(
+                pedido.ultimoPagamento ?? ""
+              ) && (
+                <SolicitarCancelamento
+                  pedidoId={pedido.id}
+                />
+              )}
 
           </article>
         ))}

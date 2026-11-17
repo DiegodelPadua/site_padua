@@ -251,6 +251,7 @@ model Pagamento {
   pagoEm               DateTime?
   pedido               Pedido               @relation(fields: [pedidoId], references: [id])
   transacoes           TransacaoPagamento[]
+  reembolso            ReembolsoCancelamento?
 
   @@index([pedidoId])
   @@index([status])
@@ -431,6 +432,7 @@ enum StatusSolicitacaoCancelamento {
 
 model SolicitacaoCancelamento {
   id              Int                           @id @default(autoincrement())
+  reembolso ReembolsoCancelamento?
   pedidoId        Int
   status          StatusSolicitacaoCancelamento @default(SOLICITADA)
   motivo          String                        @db.VarChar(1000)
@@ -448,4 +450,32 @@ model SolicitacaoCancelamento {
   @@index([status, criadoEm])
   @@index([administradorId])
   @@map("solicitacoes_cancelamento")
+}
+// Uma tentativa integral por pagamento.
+// Resultado incerto exige consulta ao provedor.
+enum StatusReembolsoCancelamento {
+  CONSULTA_NECESSARIA
+  CONFIRMADO
+}
+
+model ReembolsoCancelamento {
+  id                   Int                         @id @default(autoincrement())
+  solicitacaoId        Int                         @unique
+  pagamentoId          Int                         @unique
+  administradorId      Int
+  chaveIdempotencia    String                      @unique @db.VarChar(100)
+  orderId              String                      @db.VarChar(120)
+  transacaoId          String                      @db.VarChar(150)
+  vendedorId           String                      @db.VarChar(50)
+  valor                Decimal                     @db.Decimal(10, 2)
+  status               StatusReembolsoCancelamento @default(CONSULTA_NECESSARIA)
+  identificadorExterno String?                     @unique @db.VarChar(150)
+  criadoEm             DateTime                    @default(now())
+  confirmadoEm         DateTime?
+
+  solicitacao SolicitacaoCancelamento @relation(fields: [solicitacaoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  pagamento   Pagamento              @relation(fields: [pagamentoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([status, criadoEm])
+  @@map("reembolsos_cancelamento")
 }
