@@ -23,6 +23,10 @@ type Pedido = {
   entrega: {
     transportadora: string | null;
     codigoRastreamento: string | null;
+    status: string;
+    urlRastreamento: string | null;
+    dataPostagem: string | null;
+    dataEntrega: string | null;
   } | null;
 };
 
@@ -35,6 +39,38 @@ const situacoes: Record<string, string> = {
   ENTREGUE: "Pedido entregue",
   CANCELADO: "Pedido cancelado",
 };
+const situacoesEntrega: Record<string, string> = {
+  PENDENTE: "Aguardando preparação",
+  PREPARANDO: "Preparando envio",
+  POSTADO: "Enviado à transportadora",
+  EM_TRANSITO: "Em trânsito",
+  SAIU_PARA_ENTREGA: "Saiu para entrega",
+  ENTREGUE: "Entregue",
+  FALHA_ENTREGA: "Ocorrência na entrega",
+  DEVOLVIDO: "Devolvido à loja",
+  CANCELADO: "Entrega cancelada",
+};
+
+function linkRastreamento(
+  valor: string | null | undefined
+) {
+  if (!valor) return null;
+
+  try {
+    const url = new URL(valor);
+
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !url.port
+    )
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 const pagamentos: Record<string, string> = {
   PENDENTE: "Pendente",
@@ -398,6 +434,12 @@ export default function MeusPedidos() {
                   lineHeight: 1.7,
                 }}
               >
+                                Situação da entrega:{" "}
+                {situacoesEntrega[
+                  pedido.entrega?.status ?? ""
+                ] ?? "Ainda não informada"}
+                .
+                <br />
                 Transportadora:{" "}
                 {pedido.entrega?.transportadora ||
                   "Ainda não informada"}
@@ -408,6 +450,52 @@ export default function MeusPedidos() {
                   "Ainda não informado"}
                 .
               </p>
+                            {pedido.entrega?.dataPostagem && (
+                <p>
+                  Postagem registrada em{" "}
+                  {data.format(
+                    new Date(
+                      pedido.entrega.dataPostagem
+                    )
+                  )}
+                  .
+                </p>
+              )}
+
+              {pedido.entrega?.dataEntrega && (
+                <p>
+                  Entrega registrada em{" "}
+                  {data.format(
+                    new Date(
+                      pedido.entrega.dataEntrega
+                    )
+                  )}
+                  .
+                </p>
+              )}
+
+              {linkRastreamento(
+                pedido.entrega?.urlRastreamento
+              ) && (
+                <a
+                  href={
+                    linkRastreamento(
+                      pedido.entrega?.urlRastreamento
+                    )!
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-block",
+                    padding: "12px 18px",
+                    background: "#111",
+                    color: "#fff",
+                    textDecoration: "none",
+                  }}
+                >
+                  ACOMPANHAR ENTREGA ↗
+                </a>
+              )}
             </details>
 
             {pedido.podeCancelar && (

@@ -1030,11 +1030,14 @@ export async function consultarPedidosDoCliente(
           status: true,
         },
       },
-
       entrega: {
         select: {
           transportadora: true,
           codigoRastreamento: true,
+          status: true,
+          urlRastreamento: true,
+          dataPostagem: true,
+          dataEntrega: true,
         },
       },
     },

@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import RevisaoPagamento from "./RevisaoPagamento";
 import ConsultaCobranca from "./ConsultaCobranca";
 import AnaliseCancelamento from "./AnaliseCancelamento";
+import ReposicaoEstoque from "./ReposicaoEstoque";
+import GerenciarEntrega from "./GerenciarEntrega";
 
 import {
   listarSolicitacoesAdministrativas,
@@ -265,6 +267,23 @@ export default async function PedidosAdminPage({
                         {solicitacao && (
               <AnaliseCancelamento
                 solicitacao={solicitacao}
+              />
+            )}
+                    
+                        {pedido.status === "CANCELADO" &&
+              pagamento === "ESTORNADO" && (
+                <ReposicaoEstoque
+                  pedidoId={pedido.id}
+                />
+              )}
+                          {[
+              "CONFIRMADO",
+              "EM_PREPARACAO",
+              "ENVIADO",
+              "ENTREGUE",
+            ].includes(pedido.status) && (
+              <GerenciarEntrega
+                pedidoId={pedido.id}
               />
             )}
 
