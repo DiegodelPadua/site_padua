@@ -284,7 +284,8 @@
      if (
        metodo !== null &&
        metodo !== MetodoPagamento.PIX &&
-       metodo !== MetodoPagamento.CARTAO
+       metodo !== MetodoPagamento.CARTAO &&
+       metodo !== MetodoPagamento.SALDO_MERCADO_PAGO
      ) {
        throw new Error("Método de pagamento inválido.");
      }
@@ -889,9 +890,11 @@
         !comprovante ||
         typeof comprovante.transacaoId !== "string" ||
         !/^[A-Za-z0-9_-]{1,150}$/.test(comprovante.transacaoId) ||
-        ![MetodoPagamento.PIX, MetodoPagamento.CARTAO].includes(
-          comprovante.metodo
-        )
+        ![
+          MetodoPagamento.PIX,
+          MetodoPagamento.CARTAO,
+          MetodoPagamento.SALDO_MERCADO_PAGO,
+        ].includes(comprovante.metodo)
       ) {
         throw new Error("Dados de confirmação inválidos.");
       }
@@ -1282,9 +1285,11 @@ export async function revisarAprovacaoNoBanco(
     !prova.valor.isFinite() ||
     prova.valor.lessThanOrEqualTo(0) ||
     prova.valor.decimalPlaces() > 2 ||
-    ![MetodoPagamento.PIX, MetodoPagamento.CARTAO].includes(
-      prova.metodo
-    )
+    ![
+      MetodoPagamento.PIX,
+      MetodoPagamento.CARTAO,
+      MetodoPagamento.SALDO_MERCADO_PAGO,
+    ].includes(prova.metodo)
   ) {
     throw new RevisaoPagamentoError(
       "Comprovante de revisão inválido."

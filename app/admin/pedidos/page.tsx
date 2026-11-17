@@ -5,6 +5,7 @@ import ConsultaCobranca from "./ConsultaCobranca";
 import AnaliseCancelamento from "./AnaliseCancelamento";
 import ReposicaoEstoque from "./ReposicaoEstoque";
 import GerenciarEntrega from "./GerenciarEntrega";
+import SincronizarPagamento from "./SincronizarPagamento";
 
 import {
   listarSolicitacoesAdministrativas,
@@ -263,6 +264,16 @@ export default async function PedidosAdminPage({
             {pagamento && (
               <ConsultaCobranca pedidoId={pedido.id} />
             )}
+                        {pedido.status ===
+              "AGUARDANDO_PAGAMENTO" &&
+              [
+                "PENDENTE",
+                "PROCESSANDO",
+              ].includes(pagamento ?? "") && (
+                <SincronizarPagamento
+                  pedidoId={pedido.id}
+                />
+              )}
 
                         {solicitacao && (
               <AnaliseCancelamento

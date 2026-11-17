@@ -1,0 +1,3 @@
+ALTER TABLE `pagamentos`
+MODIFY `metodo`
+ENUM('PIX', 'CARTAO', 'SALDO_MERCADO_PAGO') NULL;

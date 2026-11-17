@@ -346,6 +346,7 @@ enum StatusPedido {
 enum MetodoPagamento {
   PIX
   CARTAO
+  SALDO_MERCADO_PAGO
 }
 
 /// Situações financeiras de uma cobrança.

@@ -67,6 +67,8 @@ async function lerCorpoLimitado(
 }
 
 export async function POST(request: NextRequest) {
+  const inicio = Date.now();
+
   try {
     if (!process.env.MERCADO_PAGO_WEBHOOK_SECRET) {
       return responder(
@@ -167,8 +169,25 @@ export async function POST(request: NextRequest) {
 
     // Somente o ID autenticado é encaminhado.
     // Status e valores serão consultados diretamente no provedor.
+    console.info(
+      "[MP_WEBHOOK] INICIO",
+      { orderId: dataId }
+    );
+
     const resultado =
-      await processarNotificacaoMercadoPago(dataId);
+      await processarNotificacaoMercadoPago(
+        dataId
+      );
+
+    console.info(
+      "[MP_WEBHOOK] RESULTADO",
+      {
+        orderId: dataId,
+        processado: resultado.processado,
+        motivo: resultado.motivo,
+        duracaoMs: Date.now() - inicio,
+      }
+    );
 
     return responder(
       { recebido: true, ...resultado },
@@ -177,7 +196,11 @@ export async function POST(request: NextRequest) {
   } catch {
     // Não registra assinatura, segredo ou resposta financeira.
     console.error(
-      "Falha no processamento do webhook Mercado Pago."
+      "Falha no processamento do webhook Mercado Pago.",
+      {
+        duracaoMs:
+          Date.now() - inicio,
+      }
     );
 
     return responder(

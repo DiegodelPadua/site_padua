@@ -17,6 +17,9 @@
 // Tipos do Prisma utilizados nos cálculos financeiros.
 import { MetodoPagamento, Prisma } from "@prisma/client";
 import {
+  identificarMetodoPagamentoMercadoPago,
+} from "../utils/metodoPagamentoMercadoPago";
+import {
   conciliarReservaDeCobrancaExpirada,
   ConciliacaoExpiradaError,
 } from "../repositories/pedidoRepository";
@@ -1176,16 +1179,9 @@ export async function processarNotificacaoMercadoPago(
   const metodo = transacao.payment_method;
 
   const metodoConfirmado =
-    metodo?.id === "pix" && metodo.type === "bank_transfer"
-      ? MetodoPagamento.PIX
-      : metodo &&
-          [
-            "credit_card",
-            "debit_card",
-            "prepaid_card",
-          ].includes(metodo.type ?? "")
-        ? MetodoPagamento.CARTAO
-        : null;
+    identificarMetodoPagamentoMercadoPago(
+      metodo
+    );
 
   if (
     !transacao.id ||
@@ -1299,17 +1295,9 @@ export async function revisarPagamentoComoAdministrador(
   const metodo = transacao?.payment_method;
 
   const metodoConfirmado =
-    metodo?.id === "pix" &&
-    metodo.type === "bank_transfer"
-      ? MetodoPagamento.PIX
-      : metodo &&
-          [
-            "credit_card",
-            "debit_card",
-            "prepaid_card",
-          ].includes(metodo.type ?? "")
-        ? MetodoPagamento.CARTAO
-        : null;
+    identificarMetodoPagamentoMercadoPago(
+      metodo
+    );
 
   if (
     order.mercadoPagoOrderId !== pagamento.identificadorExterno ||
@@ -1562,4 +1550,94 @@ export async function conciliarCobrancaExpiradaComoAdministrador(
 
     throw erro;
   }
+}
+
+/* Consulta a cobrança existente e executa a mesma
+   conciliação usada pelo webhook.
+   O chamador precisa autenticar o administrador. */
+export async function sincronizarPagamentoComoAdministrador(
+  pedidoId: number
+) {
+  if (
+    !Number.isSafeInteger(pedidoId) ||
+    pedidoId <= 0 ||
+    pedidoId > 2147483647
+  ) {
+    throw new PagamentoServiceError(
+      "Pedido inválido.",
+      400,
+      "PEDIDO_INVALIDO"
+    );
+  }
+
+  if (
+    process.env.MERCADO_PAGO_CHECKOUT_MODO !==
+    "teste"
+  ) {
+    throw new PagamentoServiceError(
+      "Conciliação restrita ao ambiente de teste.",
+      409,
+      "MODO_INVALIDO"
+    );
+  }
+
+  const cobrancas =
+    await buscarCobrancasParaConsulta(
+      pedidoId
+    );
+
+  const pagamento = cobrancas[0];
+
+  if (
+    cobrancas.length !== 1 ||
+    !pagamento?.identificadorExterno ||
+    ![
+      "PENDENTE",
+      "PROCESSANDO",
+      "APROVADO",
+    ].includes(pagamento.status)
+  ) {
+    throw new PagamentoServiceError(
+      "É necessária uma única cobrança registrada, sem estorno ou encerramento financeiro.",
+      409,
+      "COBRANCA_INCOMPATIVEL"
+    );
+  }
+
+  let resultado: Awaited<
+    ReturnType<
+      typeof processarNotificacaoMercadoPago
+    >
+  >;
+
+  try {
+    resultado =
+      await processarNotificacaoMercadoPago(
+        pagamento.identificadorExterno
+      );
+  } catch {
+    throw new PagamentoServiceError(
+      "Não foi possível conferir o resultado. Atualize o painel antes de consultar novamente.",
+      503,
+      "SINCRONIZACAO_INDISPONIVEL"
+    );
+  }
+
+  const exigeRevisao =
+    "exigeRevisao" in resultado &&
+    resultado.exigeRevisao === true;
+
+  return {
+    pedidoId,
+    ...resultado,
+    exigeRevisao,
+
+    mensagem: resultado.confirmado
+      ? "Pagamento conciliado e pedido confirmado. Atualizando o painel."
+      : exigeRevisao
+        ? "Pagamento aprovado registrado. O pedido precisa de revisão administrativa antes da preparação."
+        : resultado.motivo === "PENDENTE"
+          ? "O provedor ainda não confirmou o pagamento. Nenhuma nova cobrança foi criada."
+          : "A consulta não permitiu confirmar o pagamento. Confira o diagnóstico do webhook nos logs; nenhuma nova cobrança foi criada.",
+  };
 }
