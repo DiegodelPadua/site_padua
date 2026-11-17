@@ -2,6 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import RevisaoPagamento from "./RevisaoPagamento";
 import ConsultaCobranca from "./ConsultaCobranca";
+import AnaliseCancelamento from "./AnaliseCancelamento";
+
+import {
+  listarSolicitacoesAdministrativas,
+} from "../../../src/services/cancelamentoService";
 import {
   verificarAdministrador,
 } from "../../../src/utils/adminAuth";
@@ -101,6 +106,17 @@ export default async function PedidosAdminPage({
   const pedidos = registros.slice(0, 20);
   const possuiMais = registros.length > 20;
   const ultimo = pedidos[pedidos.length - 1];
+    const solicitacoes =
+    await listarSolicitacoesAdministrativas(
+      pedidos.map((pedido) => pedido.id)
+    );
+
+  const solicitacoesPorPedido = new Map(
+    solicitacoes.map((item) => [
+      item.pedidoId,
+      item,
+    ])
+  );
 
   return (
     <main
@@ -169,6 +185,8 @@ export default async function PedidosAdminPage({
 
       {pedidos.map((pedido) => {
         const pagamento = pedido.pagamentos[0]?.status;
+                const solicitacao =
+          solicitacoesPorPedido.get(pedido.id);
 
         const emRevisao =
           pagamento === "APROVADO" &&
@@ -242,6 +260,12 @@ export default async function PedidosAdminPage({
 
             {pagamento && (
               <ConsultaCobranca pedidoId={pedido.id} />
+            )}
+
+                        {solicitacao && (
+              <AnaliseCancelamento
+                solicitacao={solicitacao}
+              />
             )}
 
             <details style={{ marginTop: 20 }}>
