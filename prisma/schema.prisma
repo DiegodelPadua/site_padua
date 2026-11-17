@@ -472,6 +472,10 @@ model ReembolsoCancelamento {
   identificadorExterno String?                     @unique @db.VarChar(150)
   criadoEm             DateTime                    @default(now())
   confirmadoEm         DateTime?
+  estoqueRepostoEm      DateTime?
+  estoqueConferidoPorId Int?
+  origemReposicao       String? @db.VarChar(30)
+  observacaoEstoque     String? @db.VarChar(1000)
 
   solicitacao SolicitacaoCancelamento @relation(fields: [solicitacaoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   pagamento   Pagamento              @relation(fields: [pagamentoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
