@@ -5,6 +5,7 @@ import ConsultaCobranca from "./ConsultaCobranca";
 import AnaliseCancelamento from "./AnaliseCancelamento";
 import ReposicaoEstoque from "./ReposicaoEstoque";
 import GerenciarEntrega from "./GerenciarEntrega";
+import PrepararEnvio from "./PrepararEnvio";
 import SincronizarPagamento from "./SincronizarPagamento";
 
 import {
@@ -294,6 +295,15 @@ export default async function PedidosAdminPage({
               "ENTREGUE",
             ].includes(pedido.status) && (
               <GerenciarEntrega
+                pedidoId={pedido.id}
+              />
+            )}
+
+            {[
+              "CONFIRMADO",
+              "EM_PREPARACAO",
+            ].includes(pedido.status) && (
+              <PrepararEnvio
                 pedidoId={pedido.id}
               />
             )}
